@@ -1,0 +1,26 @@
+{
+  "name": "payblame",
+  "version": "0.1.0",
+  "description": "git blame, but for money: every pump.fun coin that pays a GitHub account, reverse-indexed straight from chain state.",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": { "types": "./src/index.d.ts", "default": "./src/index.js" },
+    "./package.json": "./package.json"
+  },
+  "bin": { "payblame": "./bin/payblame.js" },
+  "files": ["src", "bin", "README.md", "LICENSE"],
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "bench": "node bench/decode.mjs",
+    "bench:live": "node bench/live.mjs",
+    "record": "node test/record.js"
+  },
+  "engines": { "node": ">=20" },
+  "keywords": ["solana", "pump.fun", "creator-fees", "fee-sharing", "github", "getProgramAccounts", "memcmp", "reverse-index", "cli"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/lkristof55/payblame.git" },
+  "homepage": "https://github.com/lkristof55/payblame#readme",
+  "dependencies": {}
+}
