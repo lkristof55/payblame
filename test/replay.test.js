@@ -36,7 +36,7 @@ test('recipient with 89 coins: 10 probes, exact totals, sorted lines, pending = 
   const { result: r } = await replay('recipient-89-coins');
   assert.equal(r.kind, 'recipient');
   assert.equal(r.recipient.type, 'github');
-  assert.equal(r.recipient.address, '3x8HHmCKSrWPiHeM3FgeLWVPsdPrsdrmmQQzA5NmhosX');
+  assert.equal(r.recipient.address, 'B2DL2TJ4RoQpPsDBiFRrW9N68MzqDfxCFR1q3A5eZSVR'); // PDA of the recipient's synthetic id
   assert.equal(r.probeHits.length, 10);
   assert.equal(r.totals.coins, r.probeHits.reduce((a, b) => a + b, 0));
   assert.equal(r.totals.listed, r.coins.length);

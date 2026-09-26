@@ -2,14 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { socialFeePda, sharingConfigPda, bondingCurvePda, creatorVaultPdas, isOnCurve, decodeBase58, findProgramAddress } from '../src/index.js';
 
-// Every expected value below was read from mainnet (recorded 2026-09-25).
-// The ids are three GitHub fee recipients whose SocialFeePda accounts exist on mainnet; the test is about the PDA math, not who they are.
-test('socialFeePda matches mainnet accounts', () => {
-  assert.equal(socialFeePda('127238744', 2), '3x8HHmCKSrWPiHeM3FgeLWVPsdPrsdrmmQQzA5NmhosX');
-  assert.equal(socialFeePda('322216527', 2), 'FfLpuH4WPn2MR8Lqn1MpwQc1HtAPPqL3qvMWZjnFHGpv');
-  assert.equal(socialFeePda('275368270', 2), 'E8gBTZqNiG7Nqkh7vT28oF2TAZfkk7QG1HTmpdUiNvMt');
+// The user ids are synthetic (9000000001+, the ids the fixtures give their three GitHub recipients, plus
+// one whose bump is 253), so no real account is named. The expected SocialFeePdas were computed with an
+// independent implementation, @solana/web3.js 1.99.0 PublicKey.findProgramAddressSync([ 'social-fee-pda',
+// id, [2] ], pump_fees). The same findProgramAddress is checked against mainnet accounts in the next test.
+test('socialFeePda matches @solana/web3.js findProgramAddressSync (synthetic ids)', () => {
+  assert.equal(socialFeePda('9000006192', 2), 'B2DL2TJ4RoQpPsDBiFRrW9N68MzqDfxCFR1q3A5eZSVR');
+  assert.equal(socialFeePda('9000008460', 2), '4XRUDNnXsAmHZvNXmmRiT3hZY2BhYPg8RFt3PbujpVpk');
+  assert.equal(socialFeePda('9000010390', 2), 'CmydSRXRbC9TciRijENJU8CJFfdJv7KZm9fRfqYff5xd');
+  assert.deepEqual(findProgramAddress(['social-fee-pda', '9000900003', Uint8Array.of(2)], 'pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ'), ['D9PSA3zx7jatCiZxLePEWMrPwmzq6G2jtmpK2iGJaXNs', 253]);
 });
 
+// Every expected value below was read from mainnet (recorded 2026-09-25): coin accounts, not people.
 test('sharing config, bonding curve and creator vaults match mainnet', () => {
   const mint = 'J141JCiXKGcrhDCgWUTCL9qz7h943iCibNiLNfqZpump';
   const cfg = sharingConfigPda(mint);
@@ -27,7 +31,7 @@ test('isOnCurve: wallets are on the curve, PDAs are not', () => {
   // system-owned wallet keys (ed25519 public keys) are on the curve
   assert.equal(isOnCurve(decodeBase58('svn5xpVGu81NZzQf9FdhSrB1HBdiu8oNBVKxWJKXo4R')), true);
   assert.equal(isOnCurve(decodeBase58('AXVSPBVcTQwMK9tmTdGSSPsMoJP2i7qcFTRfKRkdJWk3')), true);
-  assert.equal(isOnCurve(decodeBase58('3x8HHmCKSrWPiHeM3FgeLWVPsdPrsdrmmQQzA5NmhosX')), false);
+  assert.equal(isOnCurve(decodeBase58('B2DL2TJ4RoQpPsDBiFRrW9N68MzqDfxCFR1q3A5eZSVR')), false);
   assert.equal(isOnCurve(decodeBase58('HNjQnXdLk1QY9Z9YR9G7QGrHb8jP39pNPXpurKxvcWhe')), false);
 });
 

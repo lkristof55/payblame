@@ -156,14 +156,15 @@ test('ledger: logins are never served, even from a snapshot stored before maskin
   const legacy = {
     ...snapshot,
     logins: undefined,
-    topUnclaimed: snapshot.topUnclaimed.map((r, i) => ({ ...r, masked: undefined, rowId: undefined, login: `legacy-login-${i}`, githubId: String(900000 + i), socialFeePda: fakeKey(`u${i}`) })),
-    topClaimed: snapshot.topClaimed.map((r, i) => ({ ...r, masked: undefined, rowId: undefined, login: `legacy-top-${i}`, githubId: String(800000 + i), socialFeePda: fakeKey(`c${i}`) })),
-    recentClaims: snapshot.recentClaims.map((r, i) => ({ ...r, masked: undefined, rowId: undefined, login: `legacy-recent-${i}`, githubId: String(700000 + i), socialFeePda: fakeKey(`r${i}`) })),
-    blame: [...snapshot.blame.slice(0, 2), '2s6Cv4yt (github:legacy-login-0            user) unclaimed   1869.443 claimed      0.000 last never'],
+    topUnclaimed: snapshot.topUnclaimed.map((r, i) => ({ ...r, masked: undefined, rowId: undefined, login: `legacy-login-${i}`, githubId: String(9000100000 + i), socialFeePda: fakeKey(`u${i}`) })),
+    topClaimed: snapshot.topClaimed.map((r, i) => ({ ...r, masked: undefined, rowId: undefined, login: `legacy-top-${i}`, githubId: String(9000200000 + i), socialFeePda: fakeKey(`c${i}`) })),
+    recentClaims: snapshot.recentClaims.map((r, i) => ({ ...r, masked: undefined, rowId: undefined, login: `legacy-recent-${i}`, githubId: String(9000300000 + i), socialFeePda: fakeKey(`r${i}`) })),
+    blame: [...snapshot.blame.slice(0, 2), `${fakeKey('u0').slice(0, 8)} (github:legacy-login-0            user) unclaimed   1869.443 claimed      0.000 last never`],
   };
   const deps = () => ({ store: memStore({ [LEDGER_KEY]: legacy }), memo: new TtlCache(), maskSecret: async () => 'svc-secret', now: () => Date.parse(snapshot.snapshotAt) + 60e3, build: () => { throw new Error('should not build'); } });
   const text = await (await ledgerResponse(deps())).text();
-  assert.doesNotMatch(text, /legacy-(login|top|recent)|90000\d|2s6Cv4yt/);
+  assert.doesNotMatch(text, /legacy-(login|top|recent)|900[123]0000\d\d/);
+  assert.ok(!text.includes(fakeKey('u0').slice(0, 8)));
   const body = JSON.parse(text);
   assert.equal(body.logins, 'masked');
   assert.match(body.loginsNote, /lookup/);

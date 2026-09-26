@@ -11,11 +11,18 @@
 //   { description: 'drop' } removes descriptions the scenario doesn't need.
 // - SocialFeePda user_ids that are text (a handle, a name, a URL) -> a same-length placeholder at
 //   the placeholder's PDA (scrubSocialFeePdas, below).
+// - Numeric user_ids (GitHub and X account ids, which a public API turns back into a login) -> a
+//   synthetic id from 9000000001 up, and every address derived from the real id -> the PDA of the
+//   synthetic one (IdRemapper, below).
 //
-// Other chain data (account bytes, PDAs, numeric ids, lamports) is left exactly as recorded, so the
-// replay still exercises the real decode path. The real -> placeholder map lives in memory only.
+// Other chain data (account bytes, lamports, claim fields, coins) is left exactly as recorded, so the
+// replay still exercises the real decode path. The real -> placeholder maps live in memory only.
+import { randomInt } from 'node:crypto';
 import { extractDeclared } from '../../src/declared.js';
 import { parseQuery } from '../../src/query.js';
+import { findProgramAddress } from '../../src/pda.js';
+import { decodeBase58 } from '../../src/base58.js';
+import { PUMP_FEES, DISC } from '../../src/constants.js';
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const word = (t) => new RegExp(`(?<![A-Za-z0-9_-])${esc(t)}(?![A-Za-z0-9_-])`, 'gi');
@@ -214,6 +221,7 @@ export function scrubSocialFeePdas(accounts, { pda }) {
     const data = Uint8Array.from(b);
     data.set(new TextEncoder().encode(p), 14);
     const pubkey = pda(p, platform);
+    data[8] = socialFeePdaBump(p, platform); // the account stores its own bump
     if (taken.has(pubkey)) throw new Error(`placeholder PDA collides with a recorded account: ${p}`);
     taken.add(pubkey);
     return { ...a, pubkey, data };
@@ -221,9 +229,184 @@ export function scrubSocialFeePdas(accounts, { pda }) {
   return { accounts: out, replaced: n };
 }
 
-export const LEDGER_NOTE = 'GitHub logins (resolved from numeric ids) are replaced by sample-login-NN. Numeric user_ids, types and lamports are as recorded. The accounts whose on-chain user_id is text (a handle, a name or a URL, not a numeric id) carry a same-length placeholder (sample_x_0007, ~07) and the PDA of that placeholder, so the fixture names no account; their lamports, platform and claim fields are as recorded.';
+export const LEDGER_NOTE = 'No real account id: every numeric user_id (GitHub or X account id) is a synthetic id from 9000000001 up, one per account, assigned in random order, and each account sits at the PDA of its synthetic id. The accounts whose on-chain user_id is text (a handle, a name or a URL) carry a same-length placeholder (sample_x_0007, ~07) at the PDA of that placeholder. GitHub logins are sample-login-NN, keyed by id. Lamports, platform, claim fields and User/Org types are as recorded.';
 
-export const SCRUB_NOTE ='GitHub logins -> sample-login-NN (keyed by numeric id, same in every fixture); declared handles -> sample_handle; GitHub/DAS/DexScreener bodies trimmed to the fields payblame reads. Chain data, ids and lamports are as recorded.';
+export const SCRUB_NOTE ='GitHub logins -> sample-login-NN (keyed by id, same in every fixture); numeric GitHub/X ids -> synthetic 9000000001+ (same as the ledger fixture) and every SocialFeePda -> the PDA of its synthetic id, including SharingConfig shareholder slots and memcmp probes; declared handles -> sample_handle; GitHub/DAS/DexScreener bodies trimmed to the fields payblame reads. Lamports, bps, claim fields and coin accounts are as recorded.';
+
+// ---- numeric user_ids ---------------------------------------------------------------------------
+// A numeric user_id is a GitHub or X account id, and a public API turns it back into a login, so no
+// fixture keeps one. IdRemapper gives every account (platform + id) a synthetic id from 9000000001 up,
+// in random order, moves it to the PDA of that id (new address, new bump) and moves every reference to
+// the old address with it: memcmp probe bytes, getAccountInfo/getMultipleAccounts keys, SharingConfig
+// shareholder slots (raw bytes), GitHub REST /user/<id> routes and bodies, /u/<id> redirects, gh/id/
+// cache keys and ghid:/x: queries. Lamports, platform, claim fields and every other byte stay as
+// recorded. The real -> synthetic map lives in memory only.
+
+export const SYNTHETIC_ID_FIRST = 9_000_000_001;
+/** 9000000001-9000999999: ten digits, far above any GitHub id issued so far. The fixture guard allows no other numeric id. */
+export const SYNTHETIC_USER_ID = /^9000(?!000000)\d{6}$/;
+export const isSyntheticId = (s) => SYNTHETIC_USER_ID.test(String(s));
+
+const SEED = 'social-fee-pda';
+const findSocialFeePda = (userId, platform) => findProgramAddress([SEED, String(userId), Uint8Array.of(platform)], PUMP_FEES);
+/** The bump byte (offset 8) a SocialFeePda for this id stores. */
+export const socialFeePdaBump = (userId, platform) => findSocialFeePda(userId, platform)[1];
+
+const B58_TOKEN = /(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{32,44}(?![1-9A-HJ-NP-Za-km-z])/g;
+const B64_ACCOUNT = /"([A-Za-z0-9+/]*={0,2})","base64"/g; // an account's data inside a raw JSON-RPC body
+const SFP_DISC = Buffer.from(DISC.SocialFeePda).toString('latin1');
+const latin1 = (b, i = 0, n = b.length) => Buffer.from(b.buffer, b.byteOffset + i, n).toString('latin1');
+
+/**
+ * Raw SocialFeePda bytes (a full account or a dataSlice) with another user_id: same length, the fields
+ * after the id shift with it, the zero padding at the end absorbs the difference.
+ * @param {Uint8Array} bytes @param {string} userId @param {number} [bump]
+ */
+export function withUserId(bytes, userId, bump) {
+  const len = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(10, true);
+  const id = new TextEncoder().encode(userId);
+  const tail = bytes.subarray(14 + len);
+  const room = bytes.length - 14 - id.length;
+  if (room < 0 || tail.subarray(Math.max(0, room)).some((x) => x !== 0)) throw new Error(`user_id ${userId} does not fit in a ${bytes.length}-byte SocialFeePda`);
+  const out = new Uint8Array(bytes.length);
+  out.set(bytes.subarray(0, 10));
+  new DataView(out.buffer).setUint32(10, id.length, true);
+  out.set(id, 14);
+  out.set(tail.subarray(0, room), 14 + id.length);
+  if (bump != null) out[8] = bump;
+  return out;
+}
+
+export class IdRemapper {
+  constructor({ first = SYNTHETIC_ID_FIRST } = {}) {
+    this.next = first;
+    this.ids = new Map();   // "<platform>:<real id>" -> synthetic id
+    this.addr = new Map();  // old SocialFeePda -> new
+    this.bin = new Map();   // old SocialFeePda (32 bytes, latin1) -> new bytes
+  }
+
+  /** The synthetic id for one account (allocated on first sight). Already-synthetic ids pass through. */
+  id(userId, platform) {
+    const real = String(userId);
+    if (isSyntheticId(real)) return real;
+    const k = `${platform}:${real}`;
+    let s = this.ids.get(k);
+    if (!s) {
+      s = String(this.next++);
+      if (!isSyntheticId(s)) throw new Error('synthetic id range exhausted');
+      this.ids.set(k, s);
+      const [from] = findSocialFeePda(real, platform);
+      const [to] = findSocialFeePda(s, platform);
+      this.addr.set(from, to);
+      this.bin.set(latin1(decodeBase58(from)), decodeBase58(to));
+    }
+    return s;
+  }
+
+  /** Allocate many at once in random order, so a synthetic id says nothing about the real one. */
+  assign(list) {
+    const a = list.map((x) => [String(x.userId), x.platform]);
+    for (let i = a.length - 1; i > 0; i--) { const j = randomInt(i + 1); [a[i], a[j]] = [a[j], a[i]]; }
+    for (const [id, p] of a) this.id(id, p);
+  }
+
+  address(a) { return this.addr.get(a) ?? a; }
+  text(s) { return typeof s === 'string' ? s.replace(B58_TOKEN, (t) => this.addr.get(t) ?? t) : s; }
+
+  /** One account's raw bytes: a numeric SocialFeePda id -> synthetic (+ bump); old SocialFeePdas inside (shareholder slots) -> new. */
+  account(bytes) {
+    let b = bytes;
+    const user = socialUser(b);
+    if (user && /^\d+$/.test(user.userId) && !isSyntheticId(user.userId) && user.platform != null) {
+      const s = this.id(user.userId, user.platform);
+      b = withUserId(b, s, socialFeePdaBump(s, user.platform));
+    } else if (user && user.platform != null && b[8] !== socialFeePdaBump(user.userId, user.platform)) {
+      b = Uint8Array.from(b);
+      b[8] = socialFeePdaBump(user.userId, user.platform);
+    }
+    let out = null;
+    for (let i = 0; i + 32 <= b.length; i++) {
+      const to = this.bin.get(latin1(b, i, 32));
+      if (to) { out ??= Uint8Array.from(b); out.set(to, i); i += 31; }
+    }
+    return out ?? b;
+  }
+
+  /** Register every id a recorded fixture holds (pass 1), so pass 2 can move each address everywhere. */
+  collect(fx) {
+    for (const [k, v] of Object.entries(fx.cacheSeed ?? {})) {
+      const m = /^gh\/id\/(\d+)$/.exec(k);
+      if (m) this.id(m[1], 2);
+      if (v?.value?.id != null) this.id(v.value.id, 2);
+    }
+    for (const [k, e] of Object.entries(fx.transcript ?? {})) {
+      const m = GH_USER_ID.exec(k);
+      if (m) this.id(m[1], 2);
+      if (isGithub(k)) {
+        for (const x of String(e.body ?? '').matchAll(/"id":(\d+)/g)) this.id(x[1], 2);
+        const u = /\/u\/(\d+)/.exec(e.headers?.location ?? '');
+        if (u) this.id(u[1], 2);
+      } else {
+        for (const x of String(e.body ?? '').matchAll(B64_ACCOUNT)) {
+          const user = socialUser(bytesOf(x[1]));
+          if (user && /^\d+$/.test(user.userId) && user.platform != null) this.id(user.userId, user.platform);
+        }
+      }
+    }
+    const q = typeof fx.q === 'string' ? parseQuery(fx.q) : null;
+    if (q?.kind === 'ghid' || q?.kind === 'x') this.id(q.id, q.kind === 'x' ? 1 : 2);
+  }
+
+  /** Pass 2: a remapped copy of a recorded lookup fixture. Re-derive `expect` by replay afterwards. */
+  fixture(fx) {
+    this.collect(fx);
+    const gh = (s) => s.replace(/(api\.github\.com\/user\/|\/u\/)(\d+)/g, (_, pre, id) => pre + this.id(id, 2));
+    const transcript = {};
+    for (const [k, e] of Object.entries(fx.transcript ?? {})) {
+      let body = e.body;
+      if (typeof body === 'string') {
+        body = isGithub(k)
+          ? gh(body.replace(/"id":(\d+)/g, (_, id) => `"id":${this.id(id, 2)}`))
+          : this.text(body.replace(B64_ACCOUNT, (_, b64) => `"${Buffer.from(this.account(bytesOf(b64))).toString('base64')}","base64"`));
+      }
+      const headers = { ...e.headers };
+      if (headers.location) headers.location = gh(headers.location);
+      transcript[gh(this.text(k))] = { ...e, headers, body };
+    }
+    const cacheSeed = {};
+    for (const [k, v] of Object.entries(fx.cacheSeed ?? {})) {
+      const val = v?.value && typeof v.value === 'object' ? { ...v.value } : v?.value;
+      if (val?.id != null) val.id = this.id(val.id, 2);
+      cacheSeed[k.replace(/^gh\/id\/(\d+)$/, (_, id) => `gh/id/${this.id(id, 2)}`)] = { ...v, value: val };
+    }
+    const q = typeof fx.q === 'string' ? parseQuery(fx.q) : null;
+    const qOut = q?.kind === 'ghid' ? `ghid:${this.id(q.id, 2)}` : q?.kind === 'x' ? `x:${this.id(q.id, 1)}` : fx.q;
+    return { ...fx, q: qOut, cacheSeed, transcript };
+  }
+
+  /**
+   * The ledger: every numeric id gets a synthetic one (random order), every account moves to its PDA,
+   * the list is re-sorted by address.
+   * @param {{ pubkey: string, lamports: number, data: Uint8Array }[]} accounts
+   */
+  ledger(accounts) {
+    this.assign(accounts.map((a) => socialUser(a.data)).filter((u) => u && /^\d+$/.test(u.userId) && u.platform != null));
+    return accounts.map((a) => {
+      const data = this.account(a.data);
+      const u = socialUser(data);
+      return u && u.platform != null ? { ...a, pubkey: findSocialFeePda(u.userId, u.platform)[0], data } : { ...a, pubkey: this.address(a.pubkey), data };
+    }).sort((x, y) => (x.pubkey < y.pubkey ? -1 : x.pubkey > y.pubkey ? 1 : 0));
+  }
+}
+
+const bytesOf = (b64) => { const buf = Buffer.from(b64, 'base64'); return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength); };
+/** { userId, platform } of raw SocialFeePda bytes (platform null when the slice ends before it), else null. */
+function socialUser(b) {
+  if (b.length < 14 || latin1(b, 0, 8) !== SFP_DISC) return null;
+  const len = new DataView(b.buffer, b.byteOffset, b.byteLength).getUint32(10, true);
+  if (len > 20 || 14 + len > b.length) return null;
+  return { userId: new TextDecoder().decode(b.subarray(14, 14 + len)), platform: 14 + len < b.length ? b[14 + len] : null };
+}
 
 function* metaTexts(k, j) {
   if (isDas(k)) {

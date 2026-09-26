@@ -6,8 +6,8 @@ test('parseQuery grammar, in contract order', () => {
   assert.deepEqual(parseQuery('sample-dev'), { kind: 'github', login: 'sample-dev' });
   assert.deepEqual(parseQuery('  @Sample-Org '), { kind: 'github', login: 'Sample-Org' });
   assert.deepEqual(parseQuery('github:sample-dev'), { kind: 'github', login: 'sample-dev' });
-  assert.deepEqual(parseQuery('ghid:1000001'), { kind: 'ghid', id: '1000001' });
-  assert.deepEqual(parseQuery('x:1000000003'), { kind: 'x', id: '1000000003' });
+  assert.deepEqual(parseQuery('ghid:9000900001'), { kind: 'ghid', id: '9000900001' });
+  assert.deepEqual(parseQuery('x:9000900004'), { kind: 'x', id: '9000900004' });
   assert.deepEqual(parseQuery('J141JCiXKGcrhDCgWUTCL9qz7h943iCibNiLNfqZpump'), { kind: 'address', address: 'J141JCiXKGcrhDCgWUTCL9qz7h943iCibNiLNfqZpump' });
 });
 

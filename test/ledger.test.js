@@ -39,8 +39,8 @@ test('ledger edge cases: empty, undecodable and unknown platforms', () => {
   assert.deepEqual(empty.topUnclaimed, []);
   assert.equal(empty.blame.length, 2);
   const mixed = aggregateLedger([
-    { pubkey: fakeKey(1), lamports: 1559560 + 5e9, data: encodeSocialFeePda({ userId: '7', platform: 2 }) },
-    { pubkey: fakeKey(2), lamports: 1559560, data: encodeSocialFeePda({ userId: '8', platform: 6 }) },
+    { pubkey: fakeKey(1), lamports: 1559560 + 5e9, data: encodeSocialFeePda({ userId: '9000900007', platform: 2 }) },
+    { pubkey: fakeKey(2), lamports: 1559560, data: encodeSocialFeePda({ userId: '9000900008', platform: 6 }) },
     { pubkey: fakeKey(3), lamports: 100, data: new Uint8Array(10) },
   ], { rentExemptLamports: 1559560 });
   assert.equal(mixed.accounts.github, 1);
@@ -96,9 +96,9 @@ function mockRpc(list) {
 test('buildLedger masks by default; { reveal: true } is the only way to get logins', async () => {
   const list = [1, 2, 3].map((i) => ({
     pubkey: fakeKey(`gh${i}`),
-    account: { lamports: 1559560 + i * 1e9, data: [Buffer.from(encodeSocialFeePda({ userId: String(1000 + i) })).toString('base64'), 'base64'] },
+    account: { lamports: 1559560 + i * 1e9, data: [Buffer.from(encodeSocialFeePda({ userId: String(9000901000 + i) })).toString('base64'), 'base64'] },
   }));
-  const cache = { get: async (k) => (/^gh\/id\/100\d$/.test(k) ? { at: Date.now(), value: { id: k.slice(6), login: `synthetic-${k.slice(6)}`, type: 'User', deleted: false } } : null), set: async () => {} };
+  const cache = { get: async (k) => (/^gh\/id\/900090100\d$/.test(k) ? { at: Date.now(), value: { id: k.slice(6), login: `synthetic-${k.slice(6)}`, type: 'User', deleted: false } } : null), set: async () => {} };
   const fetchNever = () => { throw new Error('no network in this test'); };
   clearRentCache();
   const masked = await buildLedger({ rpc: mockRpc(list), cache, fetch: fetchNever, maskSecret: 's' });
@@ -109,7 +109,7 @@ test('buildLedger masks by default; { reveal: true } is the only way to get logi
   clearRentCache();
   const open = await buildLedger({ rpc: mockRpc(list), cache, fetch: fetchNever, reveal: true });
   assert.equal(open.logins, 'revealed');
-  assert.equal(open.topUnclaimed[0].login, 'synthetic-1003');
-  assert.ok(open.blame[2].startsWith(`${list[2].pubkey.slice(0, 8)} (github:synthetic-1003`));
+  assert.equal(open.topUnclaimed[0].login, 'synthetic-9000901003');
+  assert.ok(open.blame[2].startsWith(`${list[2].pubkey.slice(0, 8)} (github:synthetic-9000901003`));
   assert.doesNotMatch(open.blame[0], /logins=masked/);
 });

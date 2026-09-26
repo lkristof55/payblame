@@ -22,7 +22,7 @@ function syntheticRpc({ recipient, coins }) {
       const slot = (off - 80) / 34;
       return [...configs].filter(([, c]) => c.slot === slot).map(([pubkey]) => ({ pubkey, account: { data: ['', 'base64'], lamports: 0 } }));
     },
-    async getAccountInfo() { stats.calls++; return { lamports: 1559560 + 7e9, owner: constants.PUMP_FEES, data: b64(encodeSocialFeePda({ userId: '322216527', totalClaimed: 2e13, lastClaimed: 1790340245 })) }; },
+    async getAccountInfo() { stats.calls++; return { lamports: 1559560 + 7e9, owner: constants.PUMP_FEES, data: b64(encodeSocialFeePda({ userId: '9000008460', totalClaimed: 2e13, lastClaimed: 1790340245 })) }; },
     async getMinimumBalanceForRentExemption(n) { stats.calls++; return n === 0 ? 650240 : 1559560; },
     async getMultipleAccounts(keys, { dataSlice }) {
       stats.calls += Math.ceil(keys.length / 100);
@@ -35,7 +35,7 @@ function syntheticRpc({ recipient, coins }) {
 
 test('20,000 coins: exact count, only `limit` decoded, deterministic subset, sorted', async () => {
   clearRentCache();
-  const recipient = 'FfLpuH4WPn2MR8Lqn1MpwQc1HtAPPqL3qvMWZjnFHGpv';
+  const recipient = '4XRUDNnXsAmHZvNXmmRiT3hZY2BhYPg8RFt3PbujpVpk'; // socialFeePda('9000008460'), a synthetic id
   const rpc = syntheticRpc({ recipient, coins: 20000 });
   const r = await blameRecipient({ kind: 'address', address: recipient, account: await rpc.getAccountInfo() }, { rpc, limit: 250 });
   assert.equal(r.totals.coins, 20000);

@@ -18,9 +18,10 @@ test('decodeSharingConfig: recorded mainnet account', () => {
   assert.equal(c.bpsTotal, 10000);
 });
 
-test('decodeSocialFeePda: recorded mainnet account', () => {
+test('decodeSocialFeePda: recorded mainnet account (synthetic user_id)', () => {
   const d = decodeSocialFeePda(accountData(raw.socialFeePda.dataBase64));
-  assert.equal(d.userId, '127238744');
+  assert.equal(d.userId, raw.socialFeePda.expect.userId);
+  assert.equal(d.userId, '9000006192'); // synthetic (the recorded GitHub id is not kept)
   assert.equal(d.platform, 2);
   assert.equal(d.totalClaimed, 0);
   assert.equal(d.lastClaimed, 0);
@@ -78,12 +79,12 @@ test('bonding curve, token amount and mint detection', () => {
 });
 
 test('base58 round trip and address validation', () => {
-  for (const s of ['3x8HHmCKSrWPiHeM3FgeLWVPsdPrsdrmmQQzA5NmhosX', '11111111111111111111111111111111', 'So11111111111111111111111111111111111111112']) {
+  for (const s of ['B2DL2TJ4RoQpPsDBiFRrW9N68MzqDfxCFR1q3A5eZSVR', '11111111111111111111111111111111', 'So11111111111111111111111111111111111111112']) {
     assert.equal(encodeBase58(decodeBase58(s)), s);
     assert.equal(isAddress(s), true);
   }
-  assert.equal(isAddress('3x8HHmCKSrWPiHeM3FgeLWVPsdPrsdrmmQQzA5Nmhos0'), false); // '0' not in alphabet
-  assert.equal(isAddress('3x8HHmCKSrWPiHeM3FgeLWVPsdPrsdrmmQQzA5NmhosXX'), false); // 45 chars
+  assert.equal(isAddress('B2DL2TJ4RoQpPsDBiFRrW9N68MzqDfxCFR1q3A5eZSV0'), false); // '0' not in alphabet
+  assert.equal(isAddress('B2DL2TJ4RoQpPsDBiFRrW9N68MzqDfxCFR1q3A5eZSVRR'), false); // 45 chars
   assert.equal(isAddress('zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz'), false); // 44 chars, decodes to 33 bytes
   assert.throws(() => decodeBase58('abc0'), /invalid base58/);
 });

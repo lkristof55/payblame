@@ -17,7 +17,7 @@ test('extractDeclared: @handles, x.com, twitter.com, github.com; ignores emails 
 
 test('diffDeclared: declared x handle, but 100% on-chain to a GitHub account', () => {
   const declared = extractDeclared({ description: 'Fees to @sample_handle via some-platform' });
-  const holders = [{ address: 'C'.repeat(32), bps: 10000, kind: 'github', login: 'sample-platform', userId: '1000002' }];
+  const holders = [{ address: 'C'.repeat(32), bps: 10000, kind: 'github', login: 'sample-platform', userId: '9000900002' }];
   const r = diffDeclared(declared, holders);
   assert.equal(r.mismatch, true);
   assert.deepEqual(r.diff, ['--- declared (name/symbol/description)', '+++ on-chain (SharingConfig)', '- x:@sample_handle', '+ github:sample-platform 10000bps']);
@@ -26,12 +26,12 @@ test('diffDeclared: declared x handle, but 100% on-chain to a GitHub account', (
 
 test('diffDeclared: match, unverifiable, and nothing declared', () => {
   const holders = [
-    { address: 'A'.repeat(32), bps: 6000, kind: 'github', login: 'Sample-Dev', userId: '1' },
-    { address: 'B'.repeat(32), bps: 4000, kind: 'x', login: null, userId: '1000000003' },
+    { address: 'A'.repeat(32), bps: 6000, kind: 'github', login: 'Sample-Dev', userId: '9000900001' },
+    { address: 'B'.repeat(32), bps: 4000, kind: 'x', login: null, userId: '9000900004' },
   ];
   const r = diffDeclared(extractDeclared({ description: 'github.com/sample-dev and @someone' }), holders);
   assert.equal(r.mismatch, false);
   assert.deepEqual(r.declared.map((d) => d.status), ['match', 'unverifiable']);
-  assert.deepEqual(r.diff.slice(2), ['  github:@sample-dev', '~ x:@someone (x ids are numeric on-chain)', '+ x:#1000000003 4000bps']);
+  assert.deepEqual(r.diff.slice(2), ['  github:@sample-dev', '~ x:@someone (x ids are numeric on-chain)', '+ x:#9000900004 4000bps']);
   assert.deepEqual(diffDeclared([], holders), { declared: [], mismatch: false, diff: [] });
 });

@@ -1,18 +1,20 @@
 // Records mainnet fixtures for the offline tests. Run once:
 //   PAYBLAME_RPC_URL=https://mainnet.helius-rpc.com/?api-key=... PAYBLAME_RECORD_LOGIN=<login> node test/record.js
 // PAYBLAME_RECORD_LOGIN: the GitHub login for the recipient fixture (ours was a recipient with 89 coins; the
-//   repo doesn't name it). Unset = keep the existing recipient fixture. The replay test expects a never-claimed
+//   repo doesn't name it). Unset = keep the existing recipient fixture (its synthetic ids then come from the
+//   earlier recording, not from this run's map). The replay test expects a never-claimed
 //   recipient with more than 600 SOL unclaimed, so a different login may need those two assertions adjusted.
 // Optional PAYBLAME_CACHE_FILE: a JSON file of GitHub cache entries to reuse (saves the 60/h GitHub quota).
-// Nothing is written raw: every fixture goes through test/helpers/scrub.js first (GitHub logins ->
-// sample-login-NN keyed by numeric id, declared handles -> sample_handle, metadata bodies trimmed), then
+// Nothing is written raw: every fixture goes through test/helpers/scrub.js first (numeric GitHub/X ids ->
+// synthetic 9000000001+ with every SocialFeePda moved to the synthetic id's PDA, GitHub logins ->
+// sample-login-NN keyed by that id, declared handles -> sample_handle, metadata bodies trimmed), then
 // `expect` is re-derived by replaying the scrubbed transcript, so the fixture and its expectation agree.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { lookup, createRpc, fetchSocialFeePdas, rentExempt, clearRentCache, memoryCache, encodeBase58, PayblameError, socialFeePda } from '../src/index.js';
 import { recordingFetch, loggingCache, writeGz, replayFetch, seededCache } from './helpers/transcript.js';
-import { Scrubber, scrubSocialFeePdas, LEDGER_NOTE } from './helpers/scrub.js';
+import { Scrubber, scrubSocialFeePdas, IdRemapper, LEDGER_NOTE } from './helpers/scrub.js';
 import { randomBytes } from 'node:crypto';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -70,16 +72,22 @@ clearRentCache();
 const rpc = createRpc({ rpcUrl });
 const [rawAccounts, rent179] = await Promise.all([fetchSocialFeePdas(rpc), rentExempt(rpc, 179)]);
 // text user_ids (handles, names, URLs) -> same-length placeholders at the placeholder's PDA
-const { accounts, replaced: textIds } = scrubSocialFeePdas(rawAccounts, { pda: socialFeePda });
+const { accounts: textScrubbed, replaced: textIds } = scrubSocialFeePdas(rawAccounts, { pda: socialFeePda });
+// numeric user_ids (GitHub/X account ids) -> synthetic ids in random order, each account at its new PDA;
+// the scenarios reuse the same map, so one account has one synthetic id (and address) in every fixture
+const remap = new IdRemapper();
+const accounts = remap.ledger(textScrubbed);
+const scenariosOut = raw.map(({ s, fx }) => ({ s, fx: remap.fixture(fx) }));
 
-// 3. one scrubber for everything: ledger ids get sample-login-NN in id order, then the scenarios
+// 3. one scrubber for everything: ledger ids get sample-login-NN in synthetic-id order, then the scenarios
 const scrubber = new Scrubber();
-const ids = Object.keys(store).filter((k) => k.startsWith('gh/id/')).map((k) => k.slice(6)).sort((a, b) => Number(a) - Number(b));
-for (const id of ids) if (store[`gh/id/${id}`]?.value?.login) scrubber.login(store[`gh/id/${id}`].value.login, id);
-for (const { fx } of raw) scrubber.collect(fx);
+const ids = Object.keys(store).filter((k) => k.startsWith('gh/id/')).map((k) => k.slice(6))
+  .map((id) => [id, remap.id(id, 2)]).sort((a, b) => Number(a[1]) - Number(b[1]));
+for (const [id, synth] of ids) if (store[`gh/id/${id}`]?.value?.login) scrubber.login(store[`gh/id/${id}`].value.login, synth);
+for (const { fx } of scenariosOut) scrubber.collect(fx);
 
 // 4. scrub, re-derive expect by replay, write
-for (const { s, fx } of raw) {
+for (const { s, fx } of scenariosOut) {
   const clean = scrubber.apply(fx, s.scrub ?? {});
   clearRentCache();
   const { result, error } = await run(clean.q, { rpcUrl: 'http://replay.invalid', fetch: replayFetch(clean.transcript), cache: seededCache(clean.cacheSeed), limit: clean.limit });
@@ -89,9 +97,9 @@ for (const { s, fx } of raw) {
 }
 
 const logins = {};
-for (const id of ids) {
+for (const [id, synth] of ids) {
   const v = store[`gh/id/${id}`].value;
-  logins[id] = { ...v, login: v.login ? scrubber.login(v.login, id) : null };
+  logins[synth] = { ...v, id: synth, login: v.login ? scrubber.login(v.login, synth) : null };
 }
 writeGz(path.join(out, 'ledger-socialfeepda.json.gz'), {
   recordedAt: new Date().toISOString(),
@@ -101,6 +109,7 @@ writeGz(path.join(out, 'ledger-socialfeepda.json.gz'), {
   logins,
   loginsNote: LEDGER_NOTE,
   textUserIds: textIds,
+  syntheticIds: remap.ids.size,
 });
-console.log(`ledger-socialfeepda        ${accounts.length} accounts, ${textIds} text user_ids replaced`);
+console.log(`ledger-socialfeepda        ${accounts.length} accounts, ${textIds} text user_ids replaced, ${remap.ids.size} numeric ids made synthetic`);
 if (cacheFile) writeFileSync(cacheFile, JSON.stringify(store));
