@@ -2,3 +2,8 @@ node_modules/
 .env
 *.log
 .cache/
+.netlify/
+app/node_modules/
+app/.data/
+app/site/dist/
+app/.env

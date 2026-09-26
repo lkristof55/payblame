@@ -220,6 +220,17 @@ The fixtures are recorded mainnet traffic, scrubbed before they are written (`te
 - [@pump-fun/pump-sdk](https://www.npmjs.com/package/@pump-fun/pump-sdk) builds instructions and PDAs. The account layouts and seeds used here come from its 2.0.0 IDLs (`pump_fees.json`, `pump.json`, `pump_amm.json`, `src/pda.ts`).
 - None of these reverse-index recipients with memcmp probes, print the whole-network ledger from one call, flag MUTABLE splits, or diff declared recipients against the on-chain split.
 
+## The live app
+
+[`app/`](app/) is the code behind **https://payblame.netlify.app**: the site (three.js, a procedural dot-matrix printer) and the Netlify Functions that run this library on mainnet (`/api/lookup`, `/api/ledger`, `/api/health`, and `ledger-cron` every 15 minutes). It imports the library from `src/`; the library never imports anything from `app/`, and `app/` is not part of the npm package.
+
+```sh
+cd app && npm ci && cp .env.example .env   # then add HELIUS_API_KEY
+npm test && npm run build && npm run dev   # http://localhost:8888
+```
+
+To deploy your own copy, create a Netlify site from this repo. The root `netlify.toml` builds `app/` and bundles its functions. Set `HELIUS_API_KEY`, `GITHUB_TOKEN` (optional; without it GitHub allows 60 requests/h) and `LEDGER_MASK_SECRET`. [`app/README.md`](app/README.md) has the endpoints, env vars, schedules and credit costs.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

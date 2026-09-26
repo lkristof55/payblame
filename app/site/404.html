@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>? payblame: no such page</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<style>
+.nf{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:96px var(--m)}
+.nf .sheet{max-width:720px}
+.nf .sheet .lines{font-size:16px;line-height:24px}
+.nf .word{font-size:96px;line-height:88px;margin-bottom:32px}
+.nf .keys{margin-top:32px;display:flex;gap:8px}
+@media (max-width:768px){.nf .word{font-size:56px;line-height:56px}.nf .sheet .lines{font-size:13px;line-height:20px}}
+</style>
+</head>
+<body>
+<main class="nf">
+  <p class="eyebrow">http 404</p>
+  <h1 class="word">?</h1>
+  <div class="sheet"><div class="lines">
+<div class="ln cmd">$ payblame <span id="p">/this-page</span></div>
+<div class="ln red">? payblame: no such page.</div>
+<div class="ln">git blame has no line for <span id="p2">/this-page</span>.</div>
+<div class="ln faded">the chain state is still there. the page is not.</div>
+  </div></div>
+  <div class="keys"><a class="key" href="/">back to the ledger</a><a class="key" href="/#run">run payblame</a></div>
+</main>
+<script>
+var p = location.pathname.slice(0, 64);
+document.getElementById('p').textContent = p; document.getElementById('p2').textContent = p;
+window.__ready = true;
+</script>
+</body>
+</html>

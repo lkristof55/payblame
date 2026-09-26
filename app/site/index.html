@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>payblame: git blame, but for money</title>
+<meta name="description" content="Type a GitHub login, a mint or a wallet. payblame prints every pump.fun coin that routes creator fees to it and what is still unclaimed. Ten memcmp probes on chain state. No indexer, no pump.fun API.">
+<meta name="theme-color" content="#DADCD6">
+<meta property="og:type" content="website">
+<meta property="og:title" content="payblame: git blame, but for money">
+<meta property="og:description" content="Every pump.fun coin that routes creator fees to a GitHub account, reverse-indexed from chain state. Ten memcmp probes. No indexer.">
+<meta property="og:image" content="/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="payblame: git blame, but for money">
+<meta name="twitter:description" content="payblame <login> prints who the chain actually pays.">
+<meta name="twitter:image" content="/og.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/fonts/bitcount-grid-single.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/atkinson-hyperlegible-next.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/atkinson-hyperlegible-mono.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <filter id="ink" x="-2%" y="-5%" width="104%" height="110%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4" result="n"/>
+    <feDisplacementMap in="SourceGraphic" in2="n" scale="1.3" xChannelSelector="R" yChannelSelector="G" result="d"/>
+    <feGaussianBlur in="d" stdDeviation="0.3"/>
+  </filter>
+</svg>
+<a class="skip key" href="#run">skip to the input</a>
+<canvas id="stage" aria-hidden="true"></canvas>
+<div class="callouts" id="callouts" aria-hidden="true"></div>
+<button class="tearcue" id="tearcue" type="button" hidden aria-label="tear the printout off the 3D paper as a receipt image"><span class="perfline" aria-hidden="true"></span><span class="teth" aria-hidden="true"></span><span class="lbl" aria-hidden="true"><b>-- &gt;8 --</b> <span class="w1">pull up</span> <span class="w2">to tear off</span></span></button>
+
+<header class="bar">
+  <a class="brand" href="#ledger" aria-label="payblame, back to the ledger"><img src="/mark.svg" alt="" width="20" height="20"> payblame <span class="tk">$PBLAME</span></a>
+  <nav class="keys" aria-label="sections">
+    <a class="key" href="#ledger">ledger</a><a class="key" href="#how">how</a><a class="key" href="#run">run</a><a class="key" href="#code">code</a><a class="key" href="#repo">repo</a>
+  </nav>
+  <div class="lamp" id="lamp" role="status"><i></i><b id="lamp-t">on line</b> <span id="lamp-s">ledger --:--z</span></div>
+  <button class="key snd" id="snd" type="button" aria-pressed="false">sound off</button>
+  <button class="key menu" id="menu" type="button" aria-expanded="false" aria-controls="menu-panel">menu</button>
+</header>
+<nav class="menu-panel" id="menu-panel" hidden aria-label="sections">
+  <a href="#ledger">ledger</a><a href="#how">how</a><a href="#pinout">pinout</a><a href="#run">run</a><a href="#code">code</a><a href="#repo">repo</a>
+  <button class="key" type="button" id="snd-m">sound off</button>
+</nav>
+
+<main>
+  <!-- 1. ledger -->
+  <section id="ledger" class="beat hero" aria-label="payblame">
+    <div class="hero-col">
+      <p class="eyebrow">pump.fun creator-fee sharing, reverse-indexed from chain state</p>
+      <h1 class="word" aria-label="payblame">payblame</h1>
+      <p class="tag">git blame, but for money.</p>
+      <p class="lede">Type a GitHub login, a mint or a wallet. payblame prints every pump.fun coin that routes creator fees to it and what is still unclaimed. <span class="long">Ten <code>memcmp</code> probes on chain state. No indexer, no pump.fun API.</span></p>
+      <form class="strip" id="hero-form" autocomplete="off">
+        <label class="ps" for="hero-q">$ payblame</label>
+        <span class="caret" aria-hidden="true"></span><input id="hero-q" name="q" spellcheck="false" autocapitalize="off" placeholder="your github login or a mint" maxlength="64">
+        <button class="print" type="submit">print</button>
+      </form>
+      <p class="try">try <button type="button" data-q="J141JCiXKGcrhDCgWUTCL9qz7h943iCibNiLNfqZpump">J141JC..pump</button><button type="button" data-q="--ledger">--ledger</button> <span class="or">or type your own login</span></p>
+      <p class="fine listed">listed != involved: recipients did not necessarily launch, endorse or know about these coins. The ledger never names anyone; a login prints only when you type it.</p>
+    </div>
+    <div class="stat" id="stat">
+      <div class="n"><span id="stat-n" class="wait">-----.---</span> <small>SOL</small></div>
+      <p><span id="stat-a">reading the ledger snapshot ...</span> <br><span class="c" id="stat-src">one getProgramAccounts on pump_fees</span></p>
+    </div>
+    <div class="hero-receipt" id="hero-receipt" hidden role="group" aria-label="your receipt">
+      <img alt="" decoding="async">
+      <div class="rkeys"><button class="key k-save" type="button">save png</button><button class="key k-copy" type="button">copy text</button><button class="key k-close" type="button">put it down</button><span class="fine"></span></div>
+    </div>
+  </section>
+
+  <!-- 2. the diff -->
+  <section id="how" class="beat pin" data-beat="diff" style="--len:200">
+    <div class="pin-inner">
+      <div class="col">
+        <p class="eyebrow">format b / one coin, declared vs on-chain</p>
+        <h2 class="h1">coin says one thing. chain says another.</h2>
+        <figure class="po" id="diff-print"></figure>
+        <p class="body" id="diff-body">A coin's name and description are only text. Its SharingConfig is the part the chain enforces. payblame prints both and diffs them.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. the pinout -->
+  <section id="pinout" class="beat pin" data-beat="pinout" style="--len:200">
+    <div class="pin-inner">
+      <div class="col">
+        <p class="eyebrow">sharingconfig / 1024 bytes / pump_fees</p>
+        <h2 class="h1">ten pins. ten slots.</h2>
+        <p class="body">A SharingConfig stores its shareholders as a Borsh Vec at byte 80: a 32-byte pubkey and a u16 bps, 34 bytes a slot, ten slots at most. The layout never moves, so slot <i>i</i> always starts at byte <b>80 + 34i</b>. The PB-10 has one pin per slot.</p>
+        <figure class="po table" id="layout-print"></figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. the ring -->
+  <section id="ring" class="beat pin" data-beat="ring" style="--len:250">
+    <div class="pin-inner">
+      <div class="col">
+        <p class="eyebrow">memcmp { offset: 80 + 34 * i } / i = 0 .. 9</p>
+        <h2 class="h1">fixed stride, so the node does the search.</h2>
+        <p class="body">Ten getProgramAccounts calls, one per slot, each with memcmp at 80 + 34i and dataSlice length 0. The node returns pubkeys only. <span id="ring-count">678,295 SharingConfigs (count at 2026-09-25 12:40Z)</span> never leave the RPC.</p>
+        <p class="probe" id="probe" aria-live="off"></p>
+        <figure class="po hex" id="hex-print"></figure>
+        <p class="fine" id="hex-src">recorded mainnet account 4MQJzmfJ..Cab2P, bytes 0x40-0x1af; the admin and shareholder keys are SAMPLE keys of the same length, every other byte is as recorded. slots 0 and 1 hold data; slots 2-9 are zeros.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. run it -->
+  <section id="run" class="beat run" data-beat="run">
+    <div class="col wide">
+      <p class="eyebrow">format a / format b / live on mainnet, read-only</p>
+      <h2 class="h1">run payblame on yourself.</h2>
+      <p class="body">A GitHub login prints every coin that routes fees to it, the bps, what is pending in each coin's vaults and what sits unclaimed. A mint prints its fee pipe and the diff. A wallet prints what pays it.</p>
+      <form class="strip" id="run-form" autocomplete="off">
+        <label class="ps" for="run-q">$ payblame</label>
+        <span class="caret" aria-hidden="true"></span><input id="run-q" name="q" spellcheck="false" autocapitalize="off" placeholder="your github login or a mint" maxlength="64">
+        <button class="print" type="submit">print</button>
+      </form>
+      <p class="try">try <button type="button" data-q="J141JCiXKGcrhDCgWUTCL9qz7h943iCibNiLNfqZpump">J141JC..pump</button><button type="button" data-q="--ledger">--ledger</button> <span class="or">or type your own login, ghid:&lt;id&gt; or wallet</span></p>
+      <figure class="po run-print" id="run-print"></figure>
+      <p class="fine">pending = still in the coin's creator vaults, not yet distributed. unclaimed = distributed to the social fee account, not yet claimed. they are different lines on purpose.</p>
+    </div>
+  </section>
+
+  <!-- 6. measured -->
+  <section id="code" class="beat code" data-beat="measured">
+    <div class="col wide">
+      <p class="eyebrow">src / MIT / no pump.fun endpoints</p>
+      <h2 class="h1">measured on this mac.</h2>
+      <div class="sheets">
+        <figure class="po codesheet" id="code-sheet"></figure>
+        <div class="install"><code>$ npm i payblame</code><span class="planned">planned: not yet on npm</span><button class="key" type="button" data-copy="npm i payblame">copy</button></div>
+        <div class="bench" id="bench"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. repo + tear -->
+  <section id="repo" class="beat repo" data-beat="repo">
+    <div class="col wide">
+      <p class="eyebrow">the repo</p>
+      <h2 class="h1">tear it off.</h2>
+      <div class="repoblock">
+        <div class="row"><span class="k">repo</span><a id="repo-url" class="v" href="https://github.com/lkristof55/payblame" target="_blank" rel="noopener">github.com/lkristof55/payblame</a></div>
+        <div class="row"><span class="k">package</span><span class="v">payblame</span><span class="fine">npm i payblame / cli: payblame &lt;login | mint | wallet | --ledger&gt;</span></div>
+        <div class="row"><span class="k">license</span><span class="v">MIT</span></div>
+        <div class="row"><span class="k">prior art</span><span class="v prose">pumpfun-creator-rewards asks pump.fun's private API. payblame reads chain state: 10 memcmp probes, zero pump.fun endpoints.</span></div>
+        <div class="row"><span class="k">install</span><code class="v">npm i payblame</code><button class="key" type="button" data-copy="npm i payblame">copy</button></div>
+        <div class="row" id="ca-row" hidden><span class="k">$PBLAME</span><code class="v" id="ca"></code><button class="key" type="button" id="ca-copy">copy</button><button class="key" type="button" id="ca-blame">blame this coin</button></div>
+      </div>
+      <p class="body">tear off your receipt. pull the paper past the scissors line, or focus it and press Enter.</p>
+      <figure class="po" id="repo-print"></figure>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <p class="scis">-- &gt;8 --</p>
+  <p>payblame prints chain state. It is read-only, it is not advice, and listed != involved.</p>
+  <p class="mono">MIT / <a href="https://github.com/lkristof55/payblame" target="_blank" rel="noopener">github.com/lkristof55/payblame</a> / $PBLAME</p>
+</footer>
+<noscript><p class="noscript">payblame needs JavaScript to print. The chain state is still there.</p></noscript>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

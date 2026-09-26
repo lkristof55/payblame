@@ -1,0 +1,17 @@
+# The live app (https://payblame.netlify.app) builds from app/. The functions import the library at the
+# repo root (../../src), and Netlify's esbuild bundler pulls it into each function bundle.
+[build]
+  base = "app"
+  command = "npm run build"
+  publish = "site/dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Also declared inline in app/netlify/functions/ledger-cron.mjs (config.schedule); kept identical.
+[functions."ledger-cron"]
+  schedule = "*/15 * * * *"

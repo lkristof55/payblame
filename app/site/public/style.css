@@ -1,0 +1,374 @@
+@font-face{font-family:"Bitcount Grid Single";src:url(/fonts/bitcount-grid-single.woff2) format("woff2");font-weight:100 900;font-display:block}
+@font-face{font-family:"Atkinson Hyperlegible Next";src:url(/fonts/atkinson-hyperlegible-next.woff2) format("woff2");font-weight:200 800;font-display:block}
+@font-face{font-family:"Atkinson Hyperlegible Mono";src:url(/fonts/atkinson-hyperlegible-mono.woff2) format("woff2");font-weight:200 800;font-display:block}
+:root{
+  --paper:#F4F5F0;--greenbar:#DCE8D6;--ink:#1F2124;--ink-2:#6E7176;--red:#C22A1E;--field:#DADCD6;--perf:#C6CDC0;
+  --dots:"Bitcount Grid Single",ui-monospace,monospace;--sans:"Atkinson Hyperlegible Next",system-ui,sans-serif;--mono:"Atkinson Hyperlegible Mono",ui-monospace,monospace;
+  --m:72px;--ui:cubic-bezier(.2,0,0,1);--feed:cubic-bezier(.5,0,.1,1);
+  --shadow:0 1px 0 rgba(0,0,0,.08),0 10px 24px -14px rgba(20,24,20,.35);
+  --fieldbg:radial-gradient(ellipse 70% 80% at 74% 48%,#E3E5E0 0%,var(--field) 62%,#D2D4CE 100%) fixed;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{background:#D2D4CE;scrollbar-width:auto;scrollbar-color:var(--ink) #D2D4CE}
+html.lenis,html.lenis body{height:auto}
+.lenis.lenis-smooth{scroll-behavior:auto!important}
+body{margin:0;min-height:100%;color:var(--ink);font:400 18px/28px var(--sans);-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;
+  background:var(--fieldbg);overflow-x:hidden}
+::selection{background:var(--ink);color:var(--paper)}
+::-webkit-scrollbar{width:12px;height:12px}
+::-webkit-scrollbar-track{background:#D2D4CE linear-gradient(90deg,transparent 5px,var(--perf) 5px,var(--perf) 7px,transparent 7px)}
+::-webkit-scrollbar-thumb{background:var(--ink);border-radius:0}
+:focus-visible{outline:2px dashed var(--ink);outline-offset:3px}
+a{color:inherit}
+button{font:inherit;color:inherit;cursor:pointer}
+code{font:600 .9em/1 var(--mono)}
+.skip{position:fixed;left:16px;top:-80px;z-index:50;background:var(--paper)}
+.skip:focus{top:72px}
+
+canvas#stage{position:fixed;inset:0;width:100vw;height:100vh;display:block;z-index:0;pointer-events:none;opacity:0;transition:opacity .2s linear}
+canvas#stage.live{opacity:1}
+main,.foot{position:relative;z-index:1}
+
+/* ---------------------------------------------------------------- top bar: the printer's control panel */
+.bar{position:fixed;z-index:20;left:48px;right:48px;top:24px;height:32px;display:flex;align-items:center;gap:28px;font:600 12px/16px var(--mono);letter-spacing:.06em;text-transform:uppercase}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none;text-transform:none;letter-spacing:0;font:700 15px/16px var(--mono)}
+.brand img{width:20px;height:20px;display:block}
+.brand .tk{color:var(--ink-2);font-weight:600}
+.bar .keys{display:flex;gap:4px;margin-left:auto}
+.bar .key{background:rgba(218,220,214,.9)}
+.bar .key:hover,.bar .key.on{background:var(--ink)}
+.lamp{background:rgba(218,220,214,.9);padding:4px 8px}
+.key{text-decoration:none;display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border:2px solid var(--ink);background:transparent;color:var(--ink);
+  font:600 12px/16px var(--mono);letter-spacing:.06em;text-transform:uppercase;border-radius:0;transition:background .16s var(--ui),color .16s var(--ui),transform .06s var(--ui);white-space:nowrap}
+.key:hover,.key.on{background:var(--ink);color:var(--paper)}
+.key:active{transform:translateY(1px)}
+.lamp{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.brand{background:rgba(218,220,214,.9);padding:6px 8px;margin-left:-8px}
+.lamp i{width:10px;height:10px;border-radius:50%;background:transparent;box-shadow:0 0 0 3px var(--field),0 0 0 4px var(--ink);transition:background .2s var(--ui)}
+.lamp.on i{background:var(--ink)}
+.lamp.busy i{animation:blink .5s steps(1) infinite}
+.lamp.out b{color:var(--red)}
+.lamp.out i{box-shadow:0 0 0 3px var(--field),0 0 0 4px var(--red)}
+.lamp span{color:var(--ink-2)}
+@keyframes blink{50%{background:transparent}}
+.bar .menu{display:none}
+.menu-panel{position:fixed;z-index:19;top:60px;right:16px;left:16px;background:var(--paper);box-shadow:var(--shadow);padding:12px 16px 16px 56px;display:grid;gap:4px;
+  -webkit-mask:radial-gradient(circle 7px at 22px 16px,#0000 98%,#000) 0 0/100% 32px repeat-y;mask:radial-gradient(circle 7px at 22px 16px,#0000 98%,#000) 0 0/100% 32px repeat-y}
+.menu-panel[hidden]{display:none}
+.menu-panel a{font:700 15px/32px var(--mono);text-decoration:none}
+.menu-panel .key{justify-self:start;margin-top:8px}
+
+/* ---------------------------------------------------------------- type */
+.eyebrow{margin:0 0 20px;font:600 12px/16px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+.word{margin:0 0 0 -6px;font:400 156px/128px var(--dots);letter-spacing:0;color:var(--ink);filter:url(#ink);white-space:nowrap}
+.tag{margin:26px 0 0;font:700 40px/48px var(--sans);letter-spacing:-.02em}
+.lede{margin:16px 0 0;max-width:540px;font:400 18px/28px var(--sans);color:#34373b}
+.lede code{font:600 16px/24px var(--mono)}
+.h1{margin:0;font:700 56px/64px var(--sans);letter-spacing:-.02em;max-width:660px}
+.body{margin:24px 0 0;font:400 20px/32px var(--sans);max-width:560px;color:#2c2f33}
+.body b{font:700 18px/1 var(--mono)}
+.fine{font:400 11px/16px var(--mono);color:var(--ink-2);margin:12px 0 0;max-width:640px}
+.planned{display:inline-block;font:700 11px/16px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--red);border:2px solid var(--red);padding:2px 6px}
+
+/* ---------------------------------------------------------------- the input: a strip of fanfold paper */
+.strip{position:relative;margin-top:32px;width:620px;max-width:100%;height:64px;background:var(--paper);display:flex;align-items:center;box-shadow:var(--shadow);
+  -webkit-mask:radial-gradient(circle 7.5px at 24px 16px,#0000 98%,#000) 0 0/100% 32px repeat-y;mask:radial-gradient(circle 7.5px at 24px 16px,#0000 98%,#000) 0 0/100% 32px repeat-y}
+.strip::before{content:"";position:absolute;left:48px;top:0;bottom:0;border-left:2px dashed var(--perf)}
+.strip .ps{margin-left:68px;font:700 18px/24px var(--mono);color:var(--ink-2);white-space:nowrap;cursor:text}
+.strip input{flex:1;min-width:0;height:100%;border:0;outline:0;background:transparent;padding:0 12px 0 6px;font:700 18px/24px var(--mono);color:var(--ink);caret-color:var(--ink);border-radius:0}
+.strip input::placeholder{color:#9A9DA1;font-weight:400}
+.strip .caret{display:inline-block;width:11px;height:22px;background:var(--ink);margin-left:12px;flex:none}
+.strip:focus-within .caret{animation:blink 1.06s steps(1) infinite}
+.strip:focus-within::after{content:"";position:absolute;inset:5px 5px 5px 58px;border:2px dashed var(--ink);pointer-events:none}
+.strip .print{height:40px;margin-right:12px;padding:0 18px;border:0;background:var(--ink);color:var(--paper);font:700 13px/16px var(--mono);letter-spacing:.1em;text-transform:uppercase;border-radius:0;transition:transform .06s var(--ui)}
+.strip .print:active{transform:translateY(1px)}
+.strip .print:focus-visible{outline:2px dashed var(--paper);outline-offset:-5px}
+.strip.bad{animation:nudge .18s steps(2) 2}
+@keyframes nudge{50%{transform:translateX(3px)}}
+.try{margin:12px 0 0;font:400 13px/16px var(--mono);color:var(--ink-2)}
+.try button{background:none;border:0;padding:0;margin:0 0 0 12px;color:var(--ink);font:400 13px/16px var(--mono);text-decoration:underline dotted 2px;text-underline-offset:4px}
+.try button:hover{text-decoration-style:solid}
+
+/* ---------------------------------------------------------------- sections */
+.beat{position:relative}
+.col{position:relative;margin-left:var(--m);width:620px;max-width:calc(100vw - 2 * var(--m))}
+.col.wide{width:760px}
+.hero{height:100vh;min-height:720px}
+.hero-col{position:absolute;left:var(--m);top:112px;width:620px}
+.stat{position:absolute;left:var(--m);bottom:56px;width:640px}
+.stat .n{font:400 64px/56px var(--dots);filter:url(#ink);white-space:nowrap}
+.stat .n small{font:inherit;font-size:32px}
+.stat .n .wait{color:var(--ink-2)}
+.stat p{margin:12px 0 0;font:400 13px/16px var(--mono);color:#3b3e42}
+.stat p.fine{color:var(--ink-2);margin-top:8px;font-size:11px}
+.stat.out .n,.stat.out #stat-a{color:var(--red)}
+.pin{height:calc(var(--len) * 1vh)}
+.pin-inner{position:sticky;top:0;height:100vh;display:flex;align-items:center;padding-top:56px}
+.run,.code,.repo{padding:128px 0 96px}
+.run{min-height:100vh}
+
+/* ---------------------------------------------------------------- printouts (DOM paper on the desk) */
+.po{margin:32px 0 0;position:relative;max-width:100%}
+.printout{touch-action:pan-y}
+.sheet{position:relative;background:var(--paper) repeating-linear-gradient(to bottom,var(--greenbar) 0 72px,transparent 72px 144px);background-position:0 24px;background-clip:padding-box;
+  padding:24px 24px 24px 72px;box-shadow:var(--shadow);min-height:72px;
+  -webkit-mask:radial-gradient(circle 7.5px at 24px 16px,#0000 98%,#000) 0 0/100% 32px repeat-y;mask:radial-gradient(circle 7.5px at 24px 16px,#0000 98%,#000) 0 0/100% 32px repeat-y;will-change:transform}
+.sheet::before{content:"";position:absolute;left:48px;top:0;bottom:0;border-left:2px dashed var(--perf)}
+.sheet .lines{overflow-x:auto;overflow-y:hidden;font:400 14px/24px var(--mono);white-space:pre;color:var(--ink);text-shadow:.35px 0 0 rgba(31,33,36,.55);scrollbar-width:thin}
+.ln{min-height:24px}
+.ln.strike{animation:print .09s linear both}
+@keyframes print{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+.ln.head{font:600 16px/24px var(--dots);letter-spacing:0}
+.ln.cmd{font-weight:700}
+.ln.faded,.ln.tilde{color:var(--ink-2);text-shadow:none}
+.ln.red,.ln.minus,.ln.err,.ln .r{color:var(--red);text-shadow:.35px 0 0 rgba(194,42,30,.5)}
+.ln.prose{font:400 15px/24px var(--sans);white-space:normal;max-width:60ch;text-shadow:none}
+.ln.em{font-weight:700;text-shadow:.4px 0 0 rgba(31,33,36,.7)}
+.ln.band{background:var(--greenbar);margin:0 -24px;padding:0 24px}
+.perf{display:block;width:100%;height:32px;margin:0;padding:0 0 0 72px;border:0;background:var(--paper);position:relative;text-align:left;overflow:hidden;cursor:grab;
+  font:400 11px/32px var(--mono);color:var(--ink-2);white-space:nowrap;box-shadow:0 10px 24px -14px rgba(20,24,20,.35);
+  -webkit-mask:radial-gradient(circle 7.5px at 24px 16px,#0000 98%,#000);mask:radial-gradient(circle 7.5px at 24px 16px,#0000 98%,#000)}
+.perf::before{content:"";position:absolute;left:0;right:0;top:0;border-top:2px dashed var(--perf);transition:border-color .16s var(--ui)}
+.perf .cut{position:absolute;top:-1px;height:4px;width:0;background:var(--field)}
+.perf:hover::before,.printout.stress .perf::before,.perf:focus-visible::before{border-top-color:var(--ink-2)}
+.perf:focus-visible{outline:2px dashed var(--ink);outline-offset:-2px}
+.printout:has(.perf:hover) .sheet{transform:translateY(-2px);box-shadow:0 12px 28px -14px rgba(20,24,20,.45)}
+.printout.dragging,.printout.dragging .perf{cursor:grabbing}
+.stub{height:16px;background:var(--paper);opacity:.85;-webkit-mask:radial-gradient(circle 7.5px at 24px 0,#0000 98%,#000);mask:radial-gradient(circle 7.5px at 24px 0,#0000 98%,#000)}
+.dock{position:relative}
+.receipt{margin:24px 0 0;transform-origin:30% 0}
+.receipt .sheet{clip-path:polygon(0 3px,4% 0,9% 4px,15% 1px,22% 3px,31% 0,38% 4px,47% 1px,55% 3px,63% 0,71% 4px,80% 1px,88% 3px,95% 0,100% 3px,100% calc(100% - 3px),94% 100%,86% calc(100% - 4px),77% calc(100% - 1px),69% calc(100% - 3px),60% 100%,52% calc(100% - 4px),43% calc(100% - 1px),35% calc(100% - 3px),26% 100%,18% calc(100% - 4px),9% calc(100% - 1px),0 calc(100% - 3px))}
+.rkeys{display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.rkeys .fine{margin:0 0 0 8px}
+
+/* hero diff / layout / hex */
+.table .lines,.hex .lines{font-size:13px}
+.hex .ln .w{padding:1px 0}
+.hex .ln .on{font-weight:700;color:var(--ink);text-shadow:.4px 0 0 rgba(31,33,36,.7)}
+.hex .ln .off{color:var(--ink-2)}
+.hex .ln .hit{background:var(--greenbar);transition:background .06s steps(1)}
+.hex .ln .br{color:var(--ink-2)}
+
+/* code sheet: ribbon syntax, three inks */
+.codesheet .lines{font-size:13px;line-height:24px}
+.codesheet .ln{position:relative}
+.codesheet .ln::before{content:attr(data-n);position:absolute;left:-60px;width:28px;text-align:right;font:400 11px/24px var(--mono);color:var(--ink-2)}
+.codesheet .kw{font-weight:700;text-shadow:.4px 0 0 rgba(31,33,36,.8)}
+.codesheet .cm,.codesheet .pu{color:var(--ink-2);text-shadow:none}
+.codesheet .ln.band{background:var(--greenbar)}
+.install{display:flex;align-items:center;gap:12px;margin:20px 0 0;flex-wrap:wrap}
+.install code{font:700 18px/24px var(--mono)}
+.bench{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:32px 24px;margin:48px 0 0}
+.bench .b .num{font:400 64px/56px var(--dots);filter:url(#ink);white-space:nowrap}
+.bench .b .num small{font-size:28px}
+.bench .b .what{font:600 13px/20px var(--mono);margin-top:10px}
+.bench .b .cmd{font:400 12px/16px var(--mono);color:var(--ink-2);margin-top:6px}
+.bench .note{grid-column:1/-1;font:400 12px/18px var(--mono);color:var(--ink-2)}
+
+/* repo */
+.repoblock{margin:32px 0 0;background:var(--paper);box-shadow:var(--shadow);padding:16px 24px 16px 72px;position:relative;
+  -webkit-mask:radial-gradient(circle 7.5px at 24px 16px,#0000 98%,#000) 0 0/100% 32px repeat-y;mask:radial-gradient(circle 7.5px at 24px 16px,#0000 98%,#000) 0 0/100% 32px repeat-y}
+.repoblock::before{content:"";position:absolute;left:48px;top:0;bottom:0;border-left:2px dashed var(--perf)}
+.repoblock .row{display:flex;align-items:center;gap:14px;min-height:48px;flex-wrap:wrap;border-bottom:1px dashed var(--perf);padding:6px 0}
+.repoblock .row:last-child{border-bottom:0}
+.repoblock .k{width:96px;flex:none;font:600 12px/16px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+.repoblock .v{font:700 16px/24px var(--mono);text-decoration:none;word-break:break-all}
+.repoblock .v.prose{font:400 16px/24px var(--sans);flex:1;min-width:240px;word-break:normal}
+.repoblock .fine{margin:0}
+
+/* callouts on the 3D object (pins, solenoids) */
+.callouts{position:fixed;inset:0;z-index:2;pointer-events:none;overflow:hidden}
+.co{position:absolute;left:0;top:0;font:600 12px/16px var(--mono);letter-spacing:.04em;color:var(--ink);white-space:nowrap;background:var(--paper);padding:2px 6px;border:2px solid var(--ink);
+  clip-path:inset(0 100% 0 0);transition:clip-path .09s linear;will-change:transform}
+.co.on{clip-path:inset(0 0 0 0)}
+.co.lead::before{content:"";position:absolute;right:100%;top:50%;width:40px;border-top:2px solid var(--ink)}
+.co.hit{background:var(--greenbar)}
+
+/* footer */
+.foot{padding:48px var(--m) 64px;font:400 15px/24px var(--sans);color:#34373b;border-top:0}
+.foot .scis{font:400 13px/16px var(--mono);color:var(--ink-2);margin:0 0 12px}
+.foot p{margin:0 0 6px;max-width:720px}
+.foot .mono{font:400 12px/16px var(--mono);color:var(--ink-2)}
+.noscript{position:fixed;bottom:0;left:0;right:0;z-index:30;background:var(--paper);padding:12px 24px;font:600 13px/20px var(--mono)}
+
+/* ---------------------------------------------------------------- mobile */
+@media (max-width:768px){
+  :root{--m:16px;--fieldbg:radial-gradient(ellipse 90% 60% at 50% 22%,#E3E5E0 0%,var(--field) 62%,#D2D4CE 100%) fixed}
+  body{background:var(--fieldbg);font-size:15px;line-height:22px}
+  .bar{left:16px;right:16px;top:12px;gap:10px}
+  .bar .keys,.lamp span,.bar .snd{display:none}
+  .lamp{font-size:11px;margin-left:auto}
+  .bar .menu{display:inline-flex;height:32px}
+  .bar::before{content:"";position:fixed;left:0;right:0;top:0;height:72px;background:linear-gradient(#DADCD6 55%,rgba(218,220,214,0));z-index:-1;pointer-events:none}
+  .hero{height:100svh;min-height:680px}
+  .hero-col{left:16px;right:16px;width:auto;top:auto;bottom:124px}
+  .hero-col .eyebrow{display:none}
+  .word{font-size:64px;line-height:56px;margin-left:-2px}
+  .tag{font-size:24px;line-height:32px;margin-top:12px}
+  .lede{font-size:15px;line-height:22px;margin-top:6px}
+  .lede .long{display:none}
+  .strip{width:100%;height:56px;margin-top:16px;-webkit-mask-size:100% 28px;mask-size:100% 28px;-webkit-mask-image:radial-gradient(circle 6px at 18px 14px,#0000 98%,#000);mask-image:radial-gradient(circle 6px at 18px 14px,#0000 98%,#000)}
+  .strip::before{left:36px}
+  .strip .ps{margin-left:48px;font-size:15px}
+  .strip .caret{width:9px;height:18px;margin-left:8px}
+  .strip input{font-size:16px;padding:0 6px 0 4px}
+  .strip .print{height:36px;padding:0 12px;margin-right:8px;font-size:12px}
+  .try{font-size:12px}
+  .try button{font-size:12px;margin-left:8px}
+  .stat{left:16px;right:16px;width:auto;bottom:20px}
+  .stat .n{font-size:34px;line-height:32px}
+  .stat .n small{font-size:20px}
+  .stat p{font-size:11px;line-height:16px;margin-top:6px}
+  .stat p br,.stat .fine,.stat .b{display:none}
+  .hero::before{content:"";position:absolute;left:0;right:0;bottom:0;top:49%;background:linear-gradient(rgba(218,220,214,0),#DADCD6 40px);pointer-events:none}
+  .hero-col,.stat{z-index:1}
+  .h1{font-size:32px;line-height:40px}
+  .body{font-size:17px;line-height:26px;margin-top:16px}
+  .col,.col.wide{margin:0 16px;width:auto;max-width:none}
+  .pin{height:auto}
+  .pin-inner{position:relative;height:auto;display:block;padding:0}
+  .pin .col,.run .col,.code .col,.repo .col{background:linear-gradient(rgba(218,220,214,0),#DADCD6 48px);padding-top:48px;margin:0;padding-left:16px;padding-right:16px}
+  .beat:not(.hero){padding-top:52vh;padding-bottom:48px}
+  .sheet{padding:16px 12px 16px 48px;-webkit-mask-size:100% 28px;mask-size:100% 28px;-webkit-mask-image:radial-gradient(circle 6px at 18px 14px,#0000 98%,#000);mask-image:radial-gradient(circle 6px at 18px 14px,#0000 98%,#000);background-position:0 16px}
+  .sheet::before{left:36px}
+  .sheet .lines{font-size:12px;line-height:20px}
+  .sheet{background-image:repeating-linear-gradient(to bottom,var(--greenbar) 0 60px,transparent 60px 120px)}
+  .ln{min-height:20px}
+  .ln.head{font-size:14px;line-height:20px}
+  .ln.prose{font-size:14px;line-height:20px}
+  .perf{padding-left:48px;-webkit-mask-image:radial-gradient(circle 6px at 18px 16px,#0000 98%,#000);mask-image:radial-gradient(circle 6px at 18px 16px,#0000 98%,#000)}
+  .codesheet .ln::before{left:-44px;width:20px}
+  .receipt{transform-origin:50% 0}
+  .bench .b .num{font-size:34px;line-height:32px}
+  .bench{gap:24px}
+  .repoblock{padding:12px 12px 12px 48px}
+  .repoblock::before{left:36px}
+  .repoblock .k{width:auto}
+  .co{font:600 10px/12px var(--mono);padding:0 3px;border-width:1px}
+  .co.lead::before{width:18px}
+  .foot{padding:32px 16px 48px}
+}
+
+/* ---------------------------------------------------------------- reduced motion: plain sections, static renders */
+@media (prefers-reduced-motion:reduce){
+  .pin{height:auto}
+  .pin-inner{position:relative;height:auto;min-height:100vh}
+  .ln.strike{animation:none}
+  .co{transition:none}
+  .strip:focus-within .caret,.lamp.busy i{animation:none}
+  canvas#stage{transition:none}
+}
+
+/* beat details */
+.pin .h1{font-size:48px;line-height:56px}
+.pin .body{font-size:18px;line-height:28px;margin-top:16px}
+.pin .po{margin-top:24px}
+.hex .lines{font-size:11px;line-height:18px}
+.hex .ln{min-height:18px}
+.hex .sheet{background-image:repeating-linear-gradient(to bottom,var(--greenbar) 0 54px,transparent 54px 108px)}
+#diff-print .ln[data-step]{clip-path:inset(0 100% 0 0);transition:clip-path .09s linear}
+#diff-print .ln[data-step].shown{clip-path:inset(0 0 0 0)}
+.reduced #diff-print .ln[data-step]{clip-path:none}
+.ln.head .r{font:inherit}
+@media (max-width:768px){.pin .h1{font-size:32px;line-height:40px}.pin .body{font-size:16px;line-height:24px}.hex .lines{font-size:11px;line-height:18px}.hex .ln{min-height:18px}}
+#ring .body{margin-top:12px}
+#ring .po{margin-top:16px}
+#ring .fine{margin-top:8px}
+
+/* ---------------------------------------------------------------- round 2 */
+/* wrapped printouts (run, diff, receipt mirror): every line stays on the paper; a wrapped row hangs 4ch in */
+.printout.wrap .lines{white-space:pre-wrap;overflow-wrap:anywhere;overflow-x:hidden}
+.printout.wrap .ln{padding-left:4ch;text-indent:-4ch}
+.printout.wrap .ln.prose{padding-left:0;text-indent:0;max-width:62ch;margin:6px 0}
+/* sheets that must keep one row per line (hex, layout, code) scroll sideways, and the right edge says so */
+.sheet .ovf{display:none}
+.printout.overflows:not(.at-end) .ovf{display:flex;position:absolute;right:0;top:0;bottom:0;width:56px;align-items:center;justify-content:flex-end;padding-right:10px;
+  background:linear-gradient(90deg,rgba(244,245,240,0),var(--paper) 65%);font:700 14px/1 var(--mono);color:var(--ink);pointer-events:none}
+.ln .more{height:24px;padding:0 8px;margin-left:10px;font-size:11px;vertical-align:top;text-indent:0;background:var(--paper)}
+.ln .more:hover{background:var(--ink)}
+.ln.more{color:var(--ink)}
+/* hero: the honesty line sits under the input, in view with the paper */
+.hero-col .listed{margin:14px 0 0;max-width:600px;color:#55585d}
+/* the tear cue: a perforation drawn over the 3D tear bar, with a pull tab */
+.tearcue{position:fixed;left:0;top:0;z-index:3;height:48px;padding:0;margin:0;border:0;background:transparent;transform-origin:0 0;cursor:grab;touch-action:none;color:var(--ink);border-radius:0}
+.tearcue .perfline{position:absolute;left:0;right:0;top:50%;border-top:2px dashed rgba(31,33,36,.55);transition:border-color .16s var(--ui)}
+.tearcue .lbl{position:absolute;left:0;top:calc(50% + 7px);background:var(--ink);color:var(--paper);font:600 11px/16px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:3px 8px 3px 6px;white-space:nowrap;animation:tug 2.6s var(--ui) 1.4s infinite}
+.tearcue .lbl b{font-weight:700;margin-right:6px;letter-spacing:0}
+.tearcue:hover .perfline,.tearcue:focus-visible .perfline{border-top-color:var(--ink)}
+.tearcue.dragging{cursor:grabbing}
+.tearcue.dragging .perfline{border-top-color:var(--red)}
+.tearcue.dragging .lbl{animation:none;background:var(--red)}
+.tearcue:focus-visible{outline:2px dashed var(--ink);outline-offset:2px}
+@keyframes tug{0%,72%,100%{transform:translateY(0)}78%{transform:translateY(-3px)}86%{transform:translateY(0)}91%{transform:translateY(-1.5px)}}
+/* the receipt the hero tear drops on the desk */
+.hero-receipt{position:absolute;z-index:2;right:104px;top:96px;width:440px;transform-origin:50% 0}
+.hero-receipt img{display:block;width:100%;height:auto;max-height:calc(100vh - 240px);object-fit:contain;object-position:top left;filter:drop-shadow(0 16px 22px rgba(20,24,20,.3))}
+.hero-receipt .rkeys{margin-top:10px}
+.hero-receipt .rkeys .key{background:var(--field)}
+.hero-receipt .rkeys .key:hover{background:var(--ink)}
+/* ring: the scrubbed probe readout, a wider column so the hex notes stay on the paper */
+#ring .col{width:700px}
+.probe{margin:14px 0 0;font:400 13px/20px var(--mono);color:var(--ink-2);min-height:20px}
+.probe b{color:var(--ink);font-weight:700}
+.hex .lines{line-height:16px}
+.hex .ln{min-height:16px}
+.hex .sheet{background-image:repeating-linear-gradient(to bottom,var(--greenbar) 0 48px,transparent 48px 96px)}
+.hex .ln.note{color:var(--ink-2)}
+/* pinned beats: a field veil behind the text column, so the metal never runs through a sentence mid-move */
+@media (min-width:769px) and (prefers-reduced-motion:no-preference){
+  .pin .pin-inner::before{content:"";position:absolute;left:0;top:0;bottom:0;width:800px;pointer-events:none;
+    background:linear-gradient(90deg,rgba(218,220,214,.92) 0,rgba(218,220,214,.92) 700px,rgba(218,220,214,0) 800px)}
+}
+@media (max-width:768px){
+  .hero-receipt{left:16px;right:16px;top:72px;width:auto}
+  .hero-receipt img{max-height:42vh}
+  .hero-col .listed{margin-top:10px;font-size:11px;line-height:15px}
+  .tearcue .lbl{font-size:10px;line-height:14px;padding:2px 6px}
+  #ring .col{width:auto}
+  .probe{font-size:12px;line-height:18px}
+}
+@media (prefers-reduced-motion:reduce){.tearcue .lbl{animation:none}}
+/* ring scrub: fired slots underlined, the slot being probed struck in full ink */
+.hex .ln .w.hit{background:none;color:var(--ink);box-shadow:inset 0 -2px 0 rgba(31,33,36,.5)}
+.hex .ln .w.cur{background:var(--ink);color:var(--paper);text-shadow:none;box-shadow:none}
+.co.sol.cur{background:var(--ink);color:var(--paper)}
+@media (max-width:768px){
+  .hero-receipt{top:64px;background:rgba(218,220,214,.97);padding:10px 10px 8px;box-shadow:var(--shadow)}
+  .hero-receipt img{max-height:36vh;margin:0 auto}
+  .hero-receipt .rkeys{gap:4px}
+  .hero-receipt .rkeys .key{height:28px;padding:0 8px;font-size:11px}
+  .hero-receipt .rkeys .fine{flex-basis:100%;margin:4px 0 0}
+}
+.try .or{margin-left:12px;color:var(--ink-2)}
+@media (max-width:768px){.try .or{display:block;margin:6px 0 0}}
+/* a torn strip keeps every character: receipts wrap like the wrapped printouts */
+.receipt .lines{white-space:pre-wrap;overflow-wrap:anywhere;overflow-x:hidden}
+.receipt .ln{padding-left:4ch;text-indent:-4ch}
+.receipt .ln.prose{padding-left:0;text-indent:0}
+.receipt .ovf{display:none!important}
+
+/* ---------------------------------------------------------------- header band: once content can pass under the
+   control panel, the panel sits on an opaque strip of the field (same fixed gradient, so it reads as the desk)
+   closed by a hairline, and nothing shows through between the keys */
+.bar::before{content:"";position:fixed;left:0;right:0;top:0;height:80px;background:var(--fieldbg);box-shadow:0 1px 0 rgba(31,33,36,.24);
+  z-index:-1;pointer-events:none;opacity:0;transition:opacity .12s linear}
+html.under .bar::before{opacity:1}
+@media (max-width:768px){
+  .bar::before{height:56px;opacity:1;background:linear-gradient(#DADCD6 55%,rgba(218,220,214,0));box-shadow:none}
+  html.under .bar::before{background:var(--fieldbg);box-shadow:0 1px 0 rgba(31,33,36,.24)}
+}
+
+/* ---------------------------------------------------------------- ledger rows: one row, one line on the 760 px sheet */
+@media (min-width:769px){.ln.lrow{font-size:13px}}
+
+/* ---------------------------------------------------------------- tear cue: the pull tab hangs under the last printed
+   row (on the ribbon), tied to the perforation by a dashed tether down the text margin */
+.tearcue .lbl{left:var(--lx,0px);top:calc(50% + var(--ly,7px) + 2px);padding:4px 8px 5px 7px;transform-origin:0 0;rotate:var(--tilt,0rad)}
+.tearcue .lbl b{display:block;margin:0}
+.tearcue .teth{position:absolute;left:0;top:50%;width:var(--tl,7px);height:0;border-top:2px dashed rgba(31,33,36,.55);transform-origin:0 0;transform:rotate(var(--ta,1.5708rad));pointer-events:none}
+.tearcue:hover .teth,.tearcue:focus-visible .teth{border-top-color:var(--ink)}
+.tearcue.dragging .teth{border-top-color:var(--red)}
+/* mobile: the tab stacks narrow (three short lines) so it hangs in the left margin under the rows, clear of the head */
+@media (max-width:768px){.tearcue .lbl .w1,.tearcue .lbl .w2{display:block}.tearcue .lbl{padding:3px 7px 4px 6px}
+  .tearcue.tight .lbl .w1,.tearcue.tight .lbl .w2{display:inline}}
