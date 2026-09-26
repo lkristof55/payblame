@@ -12,6 +12,9 @@ test('rpc retries 429 with backoff, then succeeds and counts calls', async () =>
 });
 
 test('rpc maps timeouts, HTTP errors and JSON-RPC errors to UPSTREAM', async () => {
+  // The fake fetch holds no socket, and Node 20/22 let the process exit while only the
+  // unref'd timeout timer is pending; keep the loop alive for the duration of this test.
+  const keepAlive = setInterval(() => {}, 1000);
   const slow = createRpc({ rpcUrl: 'http://rpc.test', timeoutMs: 20, fetch: (u, init) => new Promise((_, rej) => init.signal.addEventListener('abort', () => rej(init.signal.reason))) });
   await assert.rejects(slow.getAccountInfo('x'), (e) => e instanceof PayblameError && e.code === 'UPSTREAM' && e.status === 502);
   const down = createRpc({ rpcUrl: 'http://rpc.test', retries: 0, fetch: async () => new Response('no', { status: 500 }) });
@@ -19,6 +22,7 @@ test('rpc maps timeouts, HTTP errors and JSON-RPC errors to UPSTREAM', async () 
   const gpaOff = createRpc({ rpcUrl: 'http://rpc.test', fetch: async () => Response.json({ jsonrpc: '2.0', id: 1, error: { code: -32601, message: 'getProgramAccounts is disabled' } }) });
   await assert.rejects(gpaOff.getProgramAccounts('p', {}), /disabled/);
   assert.throws(() => createRpc({}), /No RPC URL/);
+  clearInterval(keepAlive);
 });
 
 test('getMultipleAccounts batches 100 keys per call and keeps order', async () => {
