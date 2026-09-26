@@ -162,7 +162,7 @@ Numbers are always `key=value` (`unclaimed=1869.443 claimed=0.000 last=never`), 
 
 Every network function takes `{ rpcUrl | rpc, githubToken?, fetch?, cache?, timeoutMs? }`. Injecting `fetch` is how the tests replay recorded mainnet traffic. Errors are `PayblameError` with `code` set to `BAD_INPUT`, `GITHUB_NOT_FOUND`, `NOT_PUMP`, `GITHUB_RATE_LIMIT` or `UPSTREAM`, and an HTTP-ready `status`. Types are in `src/index.d.ts`.
 
-Runtime dependencies: **none**. It needs Node >= 20 (`node:crypto` for sha256 and global `fetch`). Base58, Borsh decoding and the PDA math are hand-written.
+Runtime dependencies: **none**. It needs Node >= 22 (`node:crypto` for sha256 and global `fetch`). Base58, Borsh decoding and the PDA math are hand-written.
 
 ## Benchmarks (measured)
 

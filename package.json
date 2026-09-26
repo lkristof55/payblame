@@ -17,7 +17,7 @@
     "bench:live": "node bench/live.mjs",
     "record": "node test/record.js"
   },
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=22" },
   "keywords": ["solana", "pump.fun", "creator-fees", "fee-sharing", "github", "getProgramAccounts", "memcmp", "reverse-index", "cli"],
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/lkristof55/payblame.git" },
