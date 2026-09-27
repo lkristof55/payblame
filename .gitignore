@@ -7,3 +7,5 @@ app/node_modules/
 app/.data/
 app/site/dist/
 app/.env
+app/.wrangler/
+app/.dev.vars

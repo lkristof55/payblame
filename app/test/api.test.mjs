@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { lookupResponse, ledgerResponse, cacheKey, parseLimit, parseMask, TTL, LEDGER_KEY } from '../lib/api.mjs';
 import { TtlCache } from '../lib/ttl.mjs';
+import { budgetFetch, budgets, setHost } from '../lib/platform.mjs';
 import { lookup, parseQuery, clearRentCache, PayblameError, ledgerRowId, LOGIN_MASK } from '../../src/index.js';
 import { fakeKey } from '../../test/helpers/synth.js';
 import { readGz, replayFetch, seededCache } from '../../test/helpers/transcript.js';
@@ -218,4 +219,67 @@ test('TtlCache expiry and in-flight de-duplication', async () => {
   const [x, y] = await Promise.all([c.once('k', slow), c.once('k', slow)]);
   assert.equal(x, y);
   assert.equal(runs, 1);
+});
+
+// ---------------------------------------------------------------- Cloudflare budgets
+
+test('maxLimit (the Workers Free CPU budget) lists fewer coins: exact count, truncated, meta.limitCap, one cache entry', async () => {
+  const limits = [];
+  // a stand-in for the library: a recipient with 89 coins, listing `limit` of them
+  const lookup = async (q, opts) => {
+    limits.push(opts.limit);
+    const coins = Array.from({ length: Math.min(89, opts.limit) }, (_, i) => ({ mint: `m${i}` }));
+    return { kind: 'recipient', query: q, coins, totals: { coins: 89, listed: coins.length, truncated: 89 > coins.length }, blame: [], meta: { cached: false } };
+  };
+  const deps = { cache: new TtlCache(), log: quiet, lookup, maxLimit: 20 };
+  const body = await (await lookupResponse(url('q=sample-dev&limit=100'), deps)).json();
+  assert.deepEqual(limits, [20]);
+  assert.equal(body.totals.listed, 20);
+  assert.equal(body.totals.coins, 89);
+  assert.equal(body.totals.truncated, true);
+  assert.equal(body.meta.limitCap, 20);
+  const again = await (await lookupResponse(url('q=sample-dev&limit=250'), deps)).json(); // capped to 20 as well: cached
+  assert.equal(again.meta.cached, true);
+  assert.equal(again.meta.limitCap, 20);
+  assert.deepEqual(limits, [20]);
+  const within = await (await lookupResponse(url('q=sample-dev&limit=20'), deps)).json();
+  assert.equal(within.meta.limitCap, undefined); // asked for no more than the cap
+  await lookupResponse(url('q=sample-dev&limit=5'), deps);
+  assert.deepEqual(limits, [20, 5]);
+  // no cap by default (Netlify): the limit goes through
+  await lookupResponse(url('q=sample-dev&limit=250'), { cache: new TtlCache(), log: quiet, lookup });
+  assert.deepEqual(limits, [20, 5, 250]);
+});
+
+test('ledger without build (Cloudflare): an old snapshot is served as it is, with its age; nothing is rebuilt', async () => {
+  const store = memStore({ [LEDGER_KEY]: snapshot });
+  const later = () => Date.parse(snapshot.snapshotAt) + 5 * 3600e3;
+  const res = await ledgerResponse({ store, memo: new TtlCache(), now: later });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.snapshotAt, snapshot.snapshotAt);
+  assert.equal(body.ageSeconds, 5 * 3600);
+  assert.equal(body.logins, 'masked');
+  assert.equal(store.m.get(LEDGER_KEY), snapshot);
+});
+
+test('budgetFetch: the (max+1)th fetch of an invocation fails fast without reaching the network', async () => {
+  let real = 0;
+  const f = budgetFetch(3, async () => { real++; return new Response('ok'); });
+  for (let i = 0; i < 3; i++) assert.equal(await (await f('https://x.invalid')).text(), 'ok');
+  await assert.rejects(() => f('https://x.invalid'), /budget of 3/);
+  assert.equal(real, 3);
+  assert.equal(f.used, 3);
+});
+
+test('budgets: Netlify keeps the full jobs; Cloudflare defaults to the free plan, CF_FREE_PLAN=0 restores them', () => {
+  assert.deepEqual(budgets({}), { free: false, fetches: Infinity, rpcRetries: 3, lookupMaxLimit: 250, ledgerPageSize: 0, githubPerRun: 50 });
+  setHost('cloudflare');
+  try {
+    assert.deepEqual(budgets({}), { free: true, fetches: 45, rpcRetries: 3, lookupMaxLimit: 20, ledgerPageSize: 3000, githubPerRun: 10 });
+    assert.deepEqual(budgets({ CF_FREE_PLAN: '0' }), { free: false, fetches: 1000, rpcRetries: 3, lookupMaxLimit: 250, ledgerPageSize: 0, githubPerRun: 50 });
+    assert.equal(budgets({ LOOKUP_MAX_LIMIT: '40', LEDGER_PAGE_SIZE: '0' }).lookupMaxLimit, 40);
+    assert.equal(budgets({ LEDGER_PAGE_SIZE: '0' }).ledgerPageSize, 0);
+    assert.equal(budgets({ LOOKUP_MAX_LIMIT: '999' }).lookupMaxLimit, 250);
+  } finally { setHost('netlify'); }
 });

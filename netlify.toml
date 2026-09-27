@@ -1,4 +1,4 @@
-# The live app (https://payblame.netlify.app) builds from app/. The functions import the library at the
+# The Netlify copy of the app (payblame.netlify.app, paused; the live app runs on Cloudflare Workers, see app/wrangler.jsonc) builds from app/. The functions import the library at the
 # repo root (../../src), and Netlify's esbuild bundler pulls it into each function bundle.
 [build]
   base = "app"

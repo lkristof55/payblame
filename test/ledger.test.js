@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregateLedger, applyLogins, maskLedger, ledgerRowId, buildLedger, accountData, clearRentCache, LOGIN_MASK } from '../src/index.js';
+import { aggregateLedger, applyLogins, maskLedger, ledgerRowId, buildLedger, accountData, clearRentCache, LOGIN_MASK, decodeSocialFeePda, formatLedger } from '../src/index.js';
 import { readGz } from './helpers/transcript.js';
 import { encodeSocialFeePda, fakeKey } from './helpers/synth.js';
 
@@ -23,6 +23,61 @@ test('ledger over the recorded mainnet snapshot: counts add up, rankings are ord
   assert.ok(l.recentClaims.every((r, i) => r.lastClaimedAt && (i === 0 || l.recentClaims[i - 1].lastClaimedAt >= r.lastClaimedAt)));
   assert.equal(l.blame.length, 27);
   assert.match(l.blame[0], /^# payblame --ledger \d{4}-\d\d-\d\dT\d\d:\d\dZ github-recipients=\d+$/);
+});
+
+// The straightforward form aggregateLedger had before it read the fields in place and kept its top lists
+// incrementally: decodeSocialFeePda every account, then sort every GitHub row three times. Same output expected.
+function aggregateBySort(list, { rentExemptLamports, snapshotAt, top = 25, topClaimed = 10, recent = 15 }) {
+  const counts = { total: 0, github: 0, x: 0, pump: 0, other: 0 };
+  const github = { accounts: 0, everClaimed: 0, neverClaimed: 0, neverClaimedOver1Sol: 0, unclaimedLamports: 0, unclaimedNeverClaimedLamports: 0, totalClaimedLamports: 0 };
+  const x = { accounts: 0, unclaimedLamports: 0, totalClaimedLamports: 0 };
+  const gh = [];
+  let skipped = 0;
+  for (const a of list) {
+    let d;
+    try { d = decodeSocialFeePda(a.data); } catch { skipped++; continue; }
+    counts.total++;
+    const unclaimed = Math.max(0, a.lamports - rentExemptLamports);
+    if (d.platform === 2) {
+      counts.github++; github.accounts++; github.unclaimedLamports += unclaimed; github.totalClaimedLamports += d.totalClaimed;
+      if (d.lastClaimed > 0 || d.totalClaimed > 0) github.everClaimed++;
+      else { github.neverClaimed++; github.unclaimedNeverClaimedLamports += unclaimed; if (unclaimed > 1e9) github.neverClaimedOver1Sol++; }
+      gh.push({ pubkey: a.pubkey, userId: d.userId, unclaimed, totalClaimed: d.totalClaimed, lastClaimed: d.lastClaimed });
+    } else if (d.platform === 1) { counts.x++; x.accounts++; x.unclaimedLamports += unclaimed; x.totalClaimedLamports += d.totalClaimed; } else if (d.platform === 0) counts.pump++; else counts.other++;
+  }
+  const byPubkey = (a, b) => (a.pubkey < b.pubkey ? -1 : a.pubkey > b.pubkey ? 1 : 0);
+  const row = (r) => ({ githubId: r.userId, login: null, accountType: null, githubDeleted: false, socialFeePda: r.pubkey, unclaimedLamports: r.unclaimed, totalClaimedLamports: r.totalClaimed, lastClaimedAt: r.lastClaimed > 0 ? new Date(r.lastClaimed * 1000).toISOString() : null });
+  const topN = (key, n, filter = () => true) => gh.filter(filter).sort((a, b) => b[key] - a[key] || byPubkey(a, b)).slice(0, n).map(row);
+  const l = { snapshotAt, source: 'getProgramAccounts pump_fees SocialFeePda', rentExemptLamports, accounts: counts, github, x, topUnclaimed: topN('unclaimed', top), topClaimed: topN('totalClaimed', topClaimed), recentClaims: topN('lastClaimed', recent, (r) => r.lastClaimed > 0), blame: [] };
+  if (skipped) l.skippedUndecodable = skipped;
+  l.blame = formatLedger(l);
+  return l;
+}
+
+test('aggregateLedger equals the decode-then-sort form: recorded snapshot, any slice of it, and edge accounts', () => {
+  const opts = { rentExemptLamports: fx.rentExemptLamports, snapshotAt: fx.recordedAt };
+  assert.deepEqual(aggregateLedger(accounts, opts), aggregateBySort(accounts, opts));
+  for (const [s, e] of [[0, 2500], [2500, 5000], [5000, 7500], [7500, accounts.length], [100, 137]]) assert.deepEqual(aggregateLedger(accounts.slice(s, e), opts), aggregateBySort(accounts.slice(s, e), opts));
+  for (const n of [0, 1, 3]) assert.deepEqual(aggregateLedger(accounts, { ...opts, top: n, topClaimed: n, recent: n }), aggregateBySort(accounts, { ...opts, top: n, topClaimed: n, recent: n }));
+  // ties on every key (the pubkey decides), text and 20-char ids, u64s at and past 2^53, and what must be skipped
+  const acc = (seed, data, lamports = 5e9) => ({ pubkey: fakeKey(seed), lamports, data });
+  const long = encodeSocialFeePda({ userId: 'x'.repeat(21) });
+  const truncated = encodeSocialFeePda({ userId: '9000000001' }).subarray(0, 30);
+  const wrongDisc = encodeSocialFeePda({ userId: '9000000002' }); wrongDisc[0] ^= 1;
+  const edge = [
+    ...Array.from({ length: 30 }, (_, i) => acc(`tie${i}`, encodeSocialFeePda({ userId: String(9000000100 + i), totalClaimed: 7e9, lastClaimed: 1790000000 }))),
+    acc('text', encodeSocialFeePda({ userId: 'sample handle ~07' })),
+    acc('twenty', encodeSocialFeePda({ userId: '90000000000000000001', totalClaimed: 2 ** 53 - 1 })),
+    acc('big', encodeSocialFeePda({ userId: '9000000200', totalClaimed: 2n ** 60n + 12345n, lastClaimed: 1790000001 })),
+    acc('big2', encodeSocialFeePda({ userId: '9000000201', totalClaimed: 2n ** 53n + 1n })),
+    acc('x', encodeSocialFeePda({ userId: '9000000300', platform: 1, totalClaimed: 5 })),
+    acc('pump', encodeSocialFeePda({ userId: '9000000400', platform: 0 })),
+    acc('other', encodeSocialFeePda({ userId: '9000000500', platform: 6 })),
+    acc('long', long), acc('trunc', truncated), acc('disc', wrongDisc), acc('short', new Uint8Array(12)), acc('empty', new Uint8Array(0)),
+  ];
+  const l = aggregateLedger(edge, opts);
+  assert.deepEqual(l, aggregateBySort(edge, opts));
+  assert.equal(l.skippedUndecodable, 5);
 });
 
 test('applyLogins fills rows from the recorded GitHub lookups and reformats', () => {

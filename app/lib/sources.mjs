@@ -3,8 +3,9 @@
 // (GitHub REST), src/blame.js dexPair() (DexScreener). This file only wires keys from process.env and the
 // Blobs-backed GitHub id<->login cache.
 import { randomBytes } from 'node:crypto';
-import { PayblameError } from '../../src/index.js';
+import { PayblameError, createRpc } from '../../src/index.js';
 import { getStore } from './store.mjs';
+import { onCloudflare, budgets, budgetFetch } from './platform.mjs';
 
 export const STORE = 'payblame';
 
@@ -16,18 +17,34 @@ export function rpcUrl() {
   return `https://mainnet.helius-rpc.com/?api-key=${key}`;
 }
 
-/** GitHub id<->login cache in Blobs (keys gh/login/<lower>, gh/id/<id>; 7-day TTL enforced by the library). */
+/**
+ * GitHub id<->login cache in the store (keys gh/login/<lower>, gh/id/<id>; 7-day TTL enforced by the library).
+ * prefetch(keys) reads many keys in one query (D1) and serves them from memory afterwards.
+ */
 export async function githubCache() {
   const s = await getStore(STORE);
+  const mem = new Map();
   return {
-    get: async (k) => { try { return await s.get(k); } catch { return null; } },
-    set: async (k, v) => { try { await s.setJSON(k, v); } catch { /* cache is best effort */ } },
+    get: async (k) => { if (mem.has(k)) return mem.get(k); try { return await s.get(k); } catch { return null; } },
+    set: async (k, v) => { mem.set(k, v); try { await s.setJSON(k, v); } catch { /* cache is best effort */ } },
+    prefetch: async (keys) => {
+      try { const got = await s.getMany(keys); for (const k of keys) mem.set(k, got.get(k) ?? null); } catch { /* per-key reads then */ }
+    },
   };
 }
 
-/** Options every library call gets. */
+/**
+ * Options every library call gets. On Cloudflare each call gets its own fetch budget (a fresh counter per
+ * invocation, retries included) and an RPC client with the plan's retry count; on Netlify nothing changes.
+ */
 export async function libOptions(extra = {}) {
-  return { rpcUrl: rpcUrl(), githubToken: process.env.GITHUB_TOKEN || undefined, cache: await githubCache(), maskSecret: await maskSecret(), timeoutMs: 8000, ...extra };
+  const opts = { rpcUrl: rpcUrl(), githubToken: process.env.GITHUB_TOKEN || undefined, cache: await githubCache(), maskSecret: await maskSecret(), timeoutMs: 8000, ...extra };
+  if (onCloudflare()) {
+    const b = budgets();
+    opts.fetch = budgetFetch(b.fetches);
+    opts.rpc = createRpc({ rpcUrl: opts.rpcUrl, fetch: opts.fetch, timeoutMs: opts.timeoutMs, retries: b.rpcRetries });
+  }
+  return opts;
 }
 
 /**

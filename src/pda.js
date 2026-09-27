@@ -6,7 +6,6 @@ import { PUMP_FEES, PUMP, PUMP_AMM, ATA_PROGRAM, TOKEN_PROGRAM, WSOL_MINT } from
 
 const P = 2n ** 255n - 19n;
 const D = (-121665n * modInv(121666n)) % P + P; // ed25519 d, positive representative
-const SQRT_M1 = modPow(2n, (P - 1n) / 4n);       // sqrt(-1) mod p
 const PDA_MARKER = new TextEncoder().encode('ProgramDerivedAddress');
 
 function mod(a) { const r = a % P; return r < 0n ? r + P : r; }
@@ -18,9 +17,31 @@ function modPow(b, e) {
 function modInv(a) { return modPow(a, P - 2n); }
 
 /**
+ * Jacobi symbol (a/n) for odd n > 0, by quadratic reciprocity (a few hundred shifts and small
+ * reductions instead of a 252-bit modular exponentiation). For a prime n it is the Legendre symbol:
+ * 1 when a is a nonzero square mod n, -1 when it is not, 0 when n divides a.
+ */
+function jacobi(a, n) {
+  let t = 1;
+  while (a !== 0n) {
+    while ((a & 1n) === 0n) {
+      a >>= 1n;
+      const r = n & 7n;
+      if (r === 3n || r === 5n) t = -t;
+    }
+    const s = a; a = n; n = s;
+    if ((a & 3n) === 3n && (n & 3n) === 3n) t = -t;
+    a %= n;
+  }
+  return n === 1n ? t : 0;
+}
+
+/**
  * True when the 32 bytes decompress to a point on ed25519. Mirrors curve25519-dalek's
  * CompressedEdwardsY::decompress, which Solana uses: y is read little-endian with the sign bit
- * cleared and reduced mod p, and the point exists iff (y^2 - 1) / (d*y^2 + 1) is a square.
+ * cleared and reduced mod p, and the point exists iff (y^2 - 1) / (d*y^2 + 1) is a square
+ * (the sign bit only picks which root). v = d*y^2 + 1 is never 0 (-1/d is not a square), so
+ * u/v is a square iff u = 0 or u*v is a nonzero square: one Jacobi symbol, no square root.
  * @param {Uint8Array} bytes
  */
 export function isOnCurve(bytes) {
@@ -31,14 +52,7 @@ export function isOnCurve(bytes) {
   const u = mod(y2 - 1n);
   const v = mod(D * y2 + 1n);
   if (u === 0n) return true;
-  // candidate x = u * v^3 * (u * v^7)^((p-5)/8)
-  const v3 = (v * v % P) * v % P;
-  const v7 = (v3 * v3 % P) * v % P;
-  let x = (u * v3 % P) * modPow(u * v7 % P, (P - 5n) / 8n) % P;
-  const vx2 = v * (x * x % P) % P;
-  if (vx2 === u) return true;
-  if (vx2 === mod(-u)) { x = x * SQRT_M1 % P; return true; }
-  return false;
+  return jacobi((u * v) % P, P) === 1;
 }
 
 const keyCache = new Map();

@@ -3,7 +3,7 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Lenis from 'lenis';
 import { createPrintout } from './function/printout.js';
-import { wireLookup, ledgerPrint, ledgerBlame, LISTED, REDACTED, diffLines, blameLines, autoRedactor, isMasked, squeeze, MASK } from './function/lookup.js';
+import { wireLookup, ledgerPrint, ledgerBlame, ledgerOut, LISTED, REDACTED, diffLines, blameLines, autoRedactor, isMasked, squeeze, MASK } from './function/lookup.js';
 import { receiptCanvas, receiptName } from './function/receipt.js';
 import { ledger as fetchLedger, lookup, solComma, intComma } from './function/api.js';
 import { sound } from './sound.js';
@@ -179,14 +179,16 @@ async function loadLedger() {
   const res = await fetchLedger();
   const stat = $('#stat');
   if (!res.ok || !res.body?.github) {
+    // warmingUp: a fresh deploy whose scheduled scan has not finished its first snapshot yet (ledgerOut in lookup.js)
+    const msg = ledgerOut(res);
     stat.classList.add('out');
     $('#stat-n').textContent = '---'; $('#stat-n').classList.remove('wait');
-    $('#stat-a').textContent = 'PAPER OUT. ledger snapshot unavailable. lookups still work.';
-    $('#stat-src').textContent = 'GET /api/ledger did not answer';
+    $('#stat-a').textContent = msg;
+    $('#stat-src').textContent = res.body?.warmingUp ? 'GET /api/ledger: warming up' : 'GET /api/ledger did not answer';
     lampState({ out: true }); lampS.textContent = 'ledger --:--z';
-    setPaper([{ t: 'PAYBLAME --LEDGER', w: 2, b: true, cpi: 10 }, { t: '' }, { t: 'PAPER OUT. ledger snapshot unavailable. lookups still work.', c: 'red' }]);
+    setPaper([{ t: 'PAYBLAME --LEDGER', w: 2, b: true, cpi: 10 }, { t: '' }, { t: msg, c: 'red' }]);
     paperJob = null;
-    mirrorRepo({ q: 'ledger', lines: [{ t: '$ payblame --ledger', cls: 'cmd' }, { t: 'PAPER OUT. ledger snapshot unavailable. lookups still work.', cls: 'err' }] });
+    mirrorRepo({ q: 'ledger', lines: [{ t: '$ payblame --ledger', cls: 'cmd' }, { t: msg, cls: 'err' }] });
     return;
   }
   const L = ledgerBody = res.body;
@@ -194,7 +196,7 @@ async function loadLedger() {
   $('#stat-n').textContent = solComma(g.unclaimedLamports); $('#stat-n').classList.remove('wait');
   $('#stat-a').innerHTML = `unclaimed in ${intComma(g.accounts)} GitHub social fee accounts. <span class="b">${intComma(g.neverClaimed)} never claimed.</span>`;
   const at = String(L.snapshotAt);
-  $('#stat-src').textContent = `snapshot ${at.slice(0, 10)} ${at.slice(11, 16)}Z / one getProgramAccounts on pump_fees`;
+  $('#stat-src').textContent = `snapshot ${at.slice(0, 10)} ${at.slice(11, 16)}Z / ${L.scan?.pages > 1 ? `getProgramAccounts on pump_fees, ${L.scan.pages} pages` : 'one getProgramAccounts on pump_fees'}`;
   lampS.textContent = `ledger ${at.slice(11, 16)}z`;
   setPaper(ledgerPaper(L));
   paperJob = { q: '--ledger', lines: [{ t: '$ payblame --ledger', cls: 'cmd' }, ...ledgerPrint(L)] };

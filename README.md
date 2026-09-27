@@ -91,7 +91,7 @@ Every field ends by byte 59, so the network-wide ledger fetches all SocialFeePda
 
 ### Cost
 
-For a recipient with c coins and a limit L: 10 `getProgramAccounts` probes, plus 1 `getMultipleAccounts` per 100 configs, plus 1 per 50 configs for the vaults, plus 1 DAS `getAssetBatch`. That is O(1) probes and O(min(c, L)) decoding, whatever the size of the program. The PDA math (sha256 plus an ed25519 decompression check, in BigInt) runs locally with no dependencies.
+For a recipient with c coins and a limit L: 10 `getProgramAccounts` probes, plus 1 `getMultipleAccounts` per 100 configs, plus 1 per 50 configs for the vaults, plus 1 DAS `getAssetBatch`. That is O(1) probes and O(min(c, L)) decoding, whatever the size of the program. The PDA math (sha256 plus an ed25519 decompression check: one Jacobi symbol in BigInt) runs locally with no dependencies.
 
 ## Install and use
 
@@ -166,15 +166,17 @@ Runtime dependencies: **none**. It needs Node >= 22 (`node:crypto` for sha256 an
 
 ## Benchmarks (measured)
 
-Offline, on recorded mainnet accounts (`node bench/decode.mjs`, Apple M5, 10 cores, Darwin 25.5.0, Node v26.8.1, 2026-09-25):
+Offline, on recorded mainnet accounts (`node bench/decode.mjs`, Apple M5, 10 cores, Darwin 25.5.0, Node v26.8.1, 2026-09-27):
 
 | benchmark | result |
 |---|---|
-| decodeSharingConfig (2 shareholders, recorded account) | 186,385 decodes/s |
-| decodeSocialFeePda (179 bytes) | 6,303,415 decodes/s |
-| aggregateLedger over the 12,274 recorded SocialFeePdas (decode + aggregate + rank) | 5 ms (median of 20) |
-| socialFeePda(id, 2) derivation (sha256 + BigInt ed25519 off-curve check) | 5,729 /s |
-| creatorVaultPdas(config), 3 PDAs including the WSOL ATA | 1,898 /s |
+| decodeSharingConfig (2 shareholders, recorded account) | 186,835 decodes/s |
+| decodeSocialFeePda (179 bytes) | 7,039,197 decodes/s |
+| aggregateLedger over the 12,274 recorded SocialFeePdas (decode + aggregate + rank) | 0.7 ms (median of 20) |
+| socialFeePda(id, 2) derivation (sha256 + BigInt ed25519 off-curve check) | 45,399 /s |
+| creatorVaultPdas(config), 3 PDAs including the WSOL ATA | 15,731 /s |
+
+On 2026-09-25 the same bench measured 5 ms, 5,729 /s and 1,898 /s for the last three rows. Two internal changes made the difference, with the same results (tests compare both forms): the off-curve check computes one Jacobi symbol of `u*v` instead of the square root `(u*v^7)^((p-5)/8)`, and `aggregateLedger` reads the four fields it needs in place and keeps its top lists as it goes instead of sorting every GitHub account three times.
 
 Live, network-bound (`PAYBLAME_RPC_URL=... node bench/live.mjs <login> 5`, same Mac, Helius mainnet RPC, 2026-09-25T13:55Z). The measured account was a GitHub recipient with 89 coins; this README doesn't name it. Pass any login to reproduce. The probe count is always 10, and the decode work grows with the number of coins:
 
@@ -222,14 +224,14 @@ The fixtures are recorded mainnet traffic, scrubbed before they are written (`te
 
 ## The live app
 
-[`app/`](app/) is the code behind **https://payblame.netlify.app**: the site (three.js, a procedural dot-matrix printer) and the Netlify Functions that run this library on mainnet (`/api/lookup`, `/api/ledger`, `/api/health`, and `ledger-cron` every 15 minutes). It imports the library from `src/`; the library never imports anything from `app/`, and `app/` is not part of the npm package.
+[`app/`](app/) is the code behind **https://payblame.anyfee.workers.dev**: the site (three.js, a procedural dot-matrix printer) and the functions that run this library on mainnet (`/api/lookup`, `/api/ledger`, `/api/health`, and `ledger-cron` every 15 minutes). It runs on Cloudflare Workers (the Workers Free plan) with a D1 database. The Netlify copy (payblame.netlify.app) is paused. The same `app/` still builds and deploys on Netlify unchanged. It imports the library from `src/`; the library never imports anything from `app/`, and `app/` is not part of the npm package.
 
 ```sh
 cd app && npm ci && cp .env.example .env   # then add HELIUS_API_KEY
 npm test && npm run build && npm run dev   # http://localhost:8888
 ```
 
-To deploy your own copy, create a Netlify site from this repo. The root `netlify.toml` builds `app/` and bundles its functions. Set `HELIUS_API_KEY`, `GITHUB_TOKEN` (optional; without it GitHub allows 60 requests/h) and `LEDGER_MASK_SECRET`. [`app/README.md`](app/README.md) has the endpoints, env vars, schedules and credit costs.
+To deploy your own copy on Cloudflare, see [Deploy to Cloudflare Workers](app/README.md#deploy-to-cloudflare-workers): `wrangler d1 create`, one migration, three secrets, `wrangler deploy`. On the free plan the ledger is scanned in pages over several cron runs and a recipient lookup lists at most 20 coins (the count stays exact); the README lists what else changes. To deploy on Netlify instead, create a site from this repo: the root `netlify.toml` builds `app/` and bundles its functions. Either way, set `HELIUS_API_KEY`, `GITHUB_TOKEN` (optional; without it GitHub allows 60 requests/h) and `LEDGER_MASK_SECRET`. [`app/README.md`](app/README.md) has the endpoints, env vars, schedules and credit costs.
 
 ## License
 

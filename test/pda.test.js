@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { socialFeePda, sharingConfigPda, bondingCurvePda, creatorVaultPdas, isOnCurve, decodeBase58, findProgramAddress } from '../src/index.js';
 
 // The user ids are synthetic (9000000001+, the ids the fixtures give their three GitHub recipients, plus
@@ -33,6 +34,45 @@ test('isOnCurve: wallets are on the curve, PDAs are not', () => {
   assert.equal(isOnCurve(decodeBase58('AXVSPBVcTQwMK9tmTdGSSPsMoJP2i7qcFTRfKRkdJWk3')), true);
   assert.equal(isOnCurve(decodeBase58('B2DL2TJ4RoQpPsDBiFRrW9N68MzqDfxCFR1q3A5eZSVR')), false);
   assert.equal(isOnCurve(decodeBase58('HNjQnXdLk1QY9Z9YR9G7QGrHb8jP39pNPXpurKxvcWhe')), false);
+});
+
+// The reference: the square-root form of curve25519-dalek's decompress (x = u v^3 (u v^7)^((p-5)/8),
+// then check v x^2 = +-u), which isOnCurve used before it switched to one Jacobi symbol.
+function isOnCurveBySqrt(bytes) {
+  const P = 2n ** 255n - 19n;
+  const mod = (a) => ((a % P) + P) % P;
+  const pow = (b, e) => { let r = 1n; b = mod(b); while (e > 0n) { if (e & 1n) r = (r * b) % P; b = (b * b) % P; e >>= 1n; } return r; };
+  const D = mod(-121665n * pow(121666n, P - 2n));
+  let y = 0n;
+  for (let i = 31; i >= 0; i--) y = (y << 8n) | BigInt(i === 31 ? bytes[i] & 0x7f : bytes[i]);
+  y = mod(y);
+  const u = mod(y * y - 1n);
+  const v = mod(D * y * y + 1n);
+  if (u === 0n) return true;
+  const v3 = (v * v % P) * v % P;
+  const x = (u * v3 % P) * pow(u * ((v3 * v3 % P) * v % P) % P, (P - 5n) / 8n) % P;
+  const vx2 = v * (x * x % P) % P;
+  return vx2 === u || vx2 === mod(-u);
+}
+
+test('isOnCurve agrees with the square-root form of the check on 5,000 inputs and the edge cases', () => {
+  const edge = [
+    new Uint8Array(32),                                          // y = 0
+    Uint8Array.from([1, ...Array(31).fill(0)]),                  // y = 1: u = 0
+    Uint8Array.from([0xec, ...Array(30).fill(0xff), 0x7f]),      // y = p - 1
+    Uint8Array.from([0xed, ...Array(30).fill(0xff), 0x7f]),      // y = p (non-canonical, reduces to 0)
+    Uint8Array.from([0xee, ...Array(30).fill(0xff), 0xff]),      // y = p + 1 with the sign bit set
+    Uint8Array.from({ length: 32 }, () => 0xff),
+  ];
+  for (const b of edge) assert.equal(isOnCurve(b), isOnCurveBySqrt(b), Buffer.from(b).toString('hex'));
+  let on = 0;
+  for (let i = 0; i < 5000; i++) {
+    const b = new Uint8Array(createHash('sha256').update(`payblame curve check ${i}`).digest());
+    const want = isOnCurveBySqrt(b);
+    assert.equal(isOnCurve(b), want, Buffer.from(b).toString('hex'));
+    if (want) on++;
+  }
+  assert.ok(on > 2200 && on < 2800, `about half of all hashes are on the curve (${on})`);
 });
 
 test('findProgramAddress rejects seeds over 32 bytes', () => {

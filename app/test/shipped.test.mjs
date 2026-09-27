@@ -12,7 +12,7 @@ import { decodeBase58, encodeBase58, isOnCurve, socialFeePda } from '../../src/i
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SKIP = new Set(['node_modules', 'dist', '.data', '.netlify']);
-const TEXT = /\.(m?js|json|html|css|md|svg|toml|ya?ml|example)$/;
+const TEXT = /\.(m?js|jsonc?|html|css|md|svg|toml|ya?ml|sql|example)$/;
 
 function walk(dir, out = []) {
   for (const n of readdirSync(dir)) {
@@ -56,10 +56,11 @@ test('shipped files name no GitHub login or X handle (placeholders only)', () =>
   assert.deepEqual(bad, []);
 });
 
+// A D1 database_id (wrangler.jsonc) is a UUID but not a credential: it only works with the account's API token.
 test('shipped files hold nothing shaped like a key or token', () => {
   const bad = [];
   for (const { f, s } of texts) {
-    for (const re of [/api-key=(?!\*|\.\.\.|\$\{|<|SECRET\d+\b)[\w-]{8,}/g, /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, /\b(ghp|gho|ghs|github_pat)_[A-Za-z0-9_]{20,}/g, /^(HELIUS_API_KEY|GITHUB_TOKEN|LEDGER_MASK_SECRET|BIRDEYE_API_KEY)=\S+/gm]) {
+    for (const re of [/api-key=(?!\*|\.\.\.|\$\{|<|SECRET\d+\b)[\w-]{8,}/g, /(?<!"database_id": ")\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, /\b(ghp|gho|ghs|github_pat)_[A-Za-z0-9_]{20,}/g, /^(HELIUS_API_KEY|GITHUB_TOKEN|LEDGER_MASK_SECRET|BIRDEYE_API_KEY)=\S+/gm]) {
       for (const m of s.matchAll(re)) bad.push(`${f}: ${m[0].slice(0, 16)}...`);
     }
   }

@@ -1,0 +1,32 @@
+// Cloudflare Workers config for the payblame site and API (https://payblame.anyfee.workers.dev).
+// Deploy steps and the free-plan notes: README.md, "Deploy to Cloudflare Workers". Netlify still builds from
+// ../netlify.toml; both run the same netlify/functions/*.mjs.
+{
+  "name": "payblame",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-09-01",
+  // node:crypto, Buffer, and process.env filled from vars and secrets
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "site/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    // the site links only / and files by their full name
+    "html_handling": "auto-trailing-slash",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "payblame-store",
+      "database_id": "e6d0c9c5-8a55-4c05-98f7-b11464e0c55d",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // the one scheduled function: netlify/functions/ledger-cron.mjs (config.schedule)
+  "triggers": { "crons": ["*/15 * * * *"] },
+  // Workers Free plan budgets (10 ms CPU, 50 subrequests per invocation). Set "0" on Workers Paid.
+  // Secrets (wrangler secret put): HELIUS_API_KEY, GITHUB_TOKEN, LEDGER_MASK_SECRET. TOKEN_MINT (public) can go here.
+  "vars": { "CF_FREE_PLAN": "1" },
+  "observability": { "enabled": true }
+}

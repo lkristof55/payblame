@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The payblame site and its Netlify backend (https://payblame.netlify.app). The functions run the payblame library at the repo root.",
+  "description": "The payblame site and its backend (https://payblame.anyfee.workers.dev on Cloudflare Workers; the same functions also deploy to Netlify). The functions run the payblame library at the repo root.",
   "license": "MIT",
   "engines": { "node": ">=22" },
   "scripts": {

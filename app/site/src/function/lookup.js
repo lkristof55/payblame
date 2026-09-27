@@ -98,6 +98,12 @@ export function ledgerBlame(L, n = 25) {
   return [...ledgerHead(L), ...rows];
 }
 const isRow = (t) => /^row:|^[1-9A-HJ-NP-Za-km-z]{8} \(/.test(t);
+// /api/ledger without a snapshot: an error, or warmingUp (a fresh deploy whose first scheduled scan is still running)
+export function ledgerOut(res) {
+  if (!res?.body?.warmingUp) return 'PAPER OUT. ledger snapshot unavailable. lookups still work.';
+  const p = res.body.progress;
+  return `WARMING UP. the first ledger snapshot is still being scanned${p?.accountsScanned ? ` (${p.accountsScanned} accounts so far)` : ''}. lookups work now.`;
+}
 export const REDACTED = `# logins withheld as github:${MASK}. type one to print it.`;
 export function ledgerPrint(L) {
   const lines = blameLines(ledgerBlame(L)).map((l) => (isRow(l.t) ? { ...l, cls: `${l.cls} lrow`.trim() } : l));
@@ -171,7 +177,7 @@ export function wireLookup({ form, input, tries = [], printout, hooks = {}, getL
       hooks.busy?.(true);
       const res = await ledgerFn();
       if (my !== running) return; stop(); hooks.busy?.(false);
-      if (!res.ok) { hooks.out?.(true); await printout.print([{ t: 'PAPER OUT. ledger snapshot unavailable. lookups still work.', cls: 'err' }]); return; }
+      if (!res.ok || !res.body?.github) { hooks.out?.(true); await printout.print([{ t: ledgerOut(res), cls: 'err' }]); return; }
       hooks.out?.(false);
       const lines = ledgerPrint(res.body);
       hooks.result?.({ kind: 'ledger', lines, body: res.body });

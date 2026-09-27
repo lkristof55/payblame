@@ -2,16 +2,41 @@
 // Logins are opt-in: buildLedger() masks every row unless it gets { reveal: true }.
 import { createHmac, randomBytes } from 'node:crypto';
 import { PUMP_FEES, DISC_B58, SOCIAL } from './constants.js';
-import { accountData, decodeSocialFeePda } from './layout.js';
+import { accountData, isSocialFeePda } from './layout.js';
 import { createRpc, rentExempt } from './rpc.js';
 import { resolveIds, memoryCache } from './github.js';
 import { formatLedger, LOGIN_MASK } from './format.js';
 
 const defaultCache = memoryCache();
-const byPubkey = (a, b) => (a.pubkey < b.pubkey ? -1 : a.pubkey > b.pubkey ? 1 : 0);
+const utf8 = new TextDecoder();
+
+// Little-endian u64 at o as a Number, the value Number(DataView.getBigUint64(o, true)) gives: exact below
+// 2^53 (every lamport and timestamp field), through BigInt above it.
+function u64(b, o) {
+  const lo = (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16)) + b[o + 3] * 0x1000000;
+  const hi = (b[o + 4] | (b[o + 5] << 8) | (b[o + 6] << 16)) + b[o + 7] * 0x1000000;
+  if (hi < 0x200000) return hi * 0x100000000 + lo;
+  return Number((BigInt(hi) << 32n) | BigInt(lo));
+}
+
+/** Insert `row` into `list` (kept best-first, at most n long) if it ranks among the best n. */
+function keepTop(list, n, row, better) {
+  if (n <= 0 || (list.length === n && !better(row, list[n - 1]))) return;
+  let i = list.length < n ? list.push(row) - 1 : n - 1;
+  while (i > 0 && better(row, list[i - 1])) { list[i] = list[i - 1]; i--; }
+  list[i] = row;
+}
+// descending by the key, then ascending by pubkey (pubkeys are unique, so the order is total)
+const rank = (key) => (a, b) => a[key] > b[key] || (a[key] === b[key] && a.pubkey < b.pubkey);
+const byUnclaimed = rank('unclaimed');
+const byTotalClaimed = rank('totalClaimed');
+const byLastClaimed = rank('lastClaimed');
 
 /**
  * Aggregate decoded SocialFeePda accounts (pure).
+ * Reads the fields decodeSocialFeePda reads (same checks: discriminator, user_id length <= 20, length) straight
+ * from the bytes, decodes a user_id only for the rows it returns, and keeps the top lists as it goes instead of
+ * sorting every GitHub account: the network ledger runs this over every SocialFeePda.
  * @param {{ pubkey: string, lamports: number, data: Uint8Array }[]} accounts
  * @param {{ rentExemptLamports: number, snapshotAt?: string, top?: number, topClaimed?: number, recent?: number }} opts
  */
@@ -19,40 +44,48 @@ export function aggregateLedger(accounts, { rentExemptLamports, snapshotAt = new
   const counts = { total: 0, github: 0, x: 0, pump: 0, other: 0 };
   const github = { accounts: 0, everClaimed: 0, neverClaimed: 0, neverClaimedOver1Sol: 0, unclaimedLamports: 0, unclaimedNeverClaimedLamports: 0, totalClaimedLamports: 0 };
   const x = { accounts: 0, unclaimedLamports: 0, totalClaimedLamports: 0 };
-  const gh = [];
+  const tops = { unclaimed: [], totalClaimed: [], lastClaimed: [] };
+  const idAt = SOCIAL.userId + 4;
   let skipped = 0;
   for (const a of accounts) {
-    let d;
-    try { d = decodeSocialFeePda(a.data); } catch { skipped++; continue; }
+    const b = a.data;
+    if (!b || b.length < idAt || !isSocialFeePda(b)) { skipped++; continue; }
+    const len = (b[SOCIAL.userId] | (b[SOCIAL.userId + 1] << 8) | (b[SOCIAL.userId + 2] << 16)) + b[SOCIAL.userId + 3] * 0x1000000;
+    if (len > SOCIAL.maxUserIdLen || b.length < idAt + len + 17) { skipped++; continue; }
+    const o = idAt + len;
+    const platform = b[o];
+    const totalClaimed = u64(b, o + 1);
+    const lastClaimed = u64(b, o + 9);
     counts.total++;
     const unclaimed = Math.max(0, a.lamports - rentExemptLamports);
-    if (d.platform === 2) {
+    if (platform === 2) {
       counts.github++;
-      const ever = d.lastClaimed > 0 || d.totalClaimed > 0;
       github.accounts++;
       github.unclaimedLamports += unclaimed;
-      github.totalClaimedLamports += d.totalClaimed;
-      if (ever) github.everClaimed++;
+      github.totalClaimedLamports += totalClaimed;
+      if (lastClaimed > 0 || totalClaimed > 0) github.everClaimed++;
       else {
         github.neverClaimed++;
         github.unclaimedNeverClaimedLamports += unclaimed;
         if (unclaimed > 1e9) github.neverClaimedOver1Sol++;
       }
-      gh.push({ pubkey: a.pubkey, userId: d.userId, unclaimed, totalClaimed: d.totalClaimed, lastClaimed: d.lastClaimed });
-    } else if (d.platform === 1) {
+      const r = { pubkey: a.pubkey, b, len, unclaimed, totalClaimed, lastClaimed };
+      keepTop(tops.unclaimed, top, r, byUnclaimed);
+      keepTop(tops.totalClaimed, topClaimed, r, byTotalClaimed);
+      if (lastClaimed > 0) keepTop(tops.lastClaimed, recent, r, byLastClaimed);
+    } else if (platform === 1) {
       counts.x++;
       x.accounts++;
       x.unclaimedLamports += unclaimed;
-      x.totalClaimedLamports += d.totalClaimed;
-    } else if (d.platform === 0) counts.pump++;
+      x.totalClaimedLamports += totalClaimed;
+    } else if (platform === 0) counts.pump++;
     else counts.other++;
   }
   const row = (r) => ({
-    githubId: r.userId, login: null, accountType: null, githubDeleted: false, socialFeePda: r.pubkey,
+    githubId: utf8.decode(r.b.subarray(idAt, idAt + r.len)), login: null, accountType: null, githubDeleted: false, socialFeePda: r.pubkey,
     unclaimedLamports: r.unclaimed, totalClaimedLamports: r.totalClaimed,
     lastClaimedAt: r.lastClaimed > 0 ? new Date(r.lastClaimed * 1000).toISOString() : null,
   });
-  const topN = (key, n, filter = () => true) => gh.filter(filter).sort((a, b) => b[key] - a[key] || byPubkey(a, b)).slice(0, n).map(row);
   const ledger = {
     snapshotAt,
     source: 'getProgramAccounts pump_fees SocialFeePda',
@@ -60,9 +93,9 @@ export function aggregateLedger(accounts, { rentExemptLamports, snapshotAt = new
     accounts: counts,
     github,
     x,
-    topUnclaimed: topN('unclaimed', top),
-    topClaimed: topN('totalClaimed', topClaimed),
-    recentClaims: topN('lastClaimed', recent, (r) => r.lastClaimed > 0),
+    topUnclaimed: tops.unclaimed.map(row),
+    topClaimed: tops.totalClaimed.map(row),
+    recentClaims: tops.lastClaimed.map(row),
     blame: [],
   };
   if (skipped) ledger.skippedUndecodable = skipped;
@@ -83,10 +116,12 @@ export function applyLogins(ledger, logins) {
 }
 
 // A per-process secret: row ids stay non-reversible, but change between processes unless a secret is passed.
-const processSecret = randomBytes(32);
+// Made on first use, not at import: some runtimes (Cloudflare Workers) refuse random bytes in global scope.
+let processSecretBytes = null;
+const processSecret = () => (processSecretBytes ??= randomBytes(32));
 
 /** Stable, non-reversible row id: 'row:' + the first 8 hex of HMAC-SHA256(secret, socialFeePda). */
-export function ledgerRowId(socialFeePda, secret = processSecret) {
+export function ledgerRowId(socialFeePda, secret = processSecret()) {
   return `row:${createHmac('sha256', secret).update(socialFeePda).digest('hex').slice(0, 8)}`;
 }
 
@@ -99,7 +134,7 @@ export function ledgerRowId(socialFeePda, secret = processSecret) {
  * @param {object} ledger
  * @param {{ secret?: string | Uint8Array }} [opts] same secret -> same row ids across snapshots
  */
-export function maskLedger(ledger, { secret = processSecret } = {}) {
+export function maskLedger(ledger, { secret = processSecret() } = {}) {
   const mask = (r) => (r.masked ? { ...r, login: LOGIN_MASK } : {
     ...r,
     githubId: null,
